@@ -17,6 +17,6 @@ final class AppRouter {
     }
 
     init() {
-        self.hasCompletedOnboarding = true // TEMP: bypass onboarding for UI testing
+        self.hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
     }
 }

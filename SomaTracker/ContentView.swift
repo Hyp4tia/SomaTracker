@@ -25,9 +25,11 @@ struct ContentView: View {
             Text("Home")
                 .tabItem { Label("Home", systemImage: "house") }
                 .tag(Tab.home)
+                .toolbar(.hidden, for: .tabBar)
             Text("Settings")
                 .tabItem { Label("Settings", systemImage: "gearshape") }
                 .tag(Tab.settings)
+                .toolbar(.hidden, for: .tabBar)
         }
         .overlay(alignment: .bottomTrailing) {
             Button(action: { appRouter.showLogSheet = true }) {
