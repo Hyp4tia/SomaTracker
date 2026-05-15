@@ -12,7 +12,10 @@ import SwiftData
 struct SomaTrackerApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            UserProfile.self,
+            DailyLog.self,
+            FoodEntry.self,
+            WaterEntry.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

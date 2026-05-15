@@ -2,60 +2,53 @@
 //  ContentView.swift
 //  SomaTracker
 //
-//  Created by Zeyad Hussein on 15/05/2026.
-//
 
 import SwiftUI
 import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @State private var appRouter = AppRouter()
+    @State private var tabRouter = TabRouter()
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
-                }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
-        } detail: {
-            Text("Select an item")
+        if !appRouter.hasCompletedOnboarding {
+            Text("Onboarding")
+        } else {
+            mainTabView
         }
     }
 
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
+    // MARK: - Main tab view
 
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
-            }
+    private var mainTabView: some View {
+        TabView(selection: $tabRouter.selectedTab) {
+            Text("Home")
+                .tabItem { Label("Home", systemImage: "house") }
+                .tag(Tab.home)
+            Text("Settings")
+                .tabItem { Label("Settings", systemImage: "gearshape") }
+                .tag(Tab.settings)
         }
+        .overlay(alignment: .bottomTrailing) {
+            Button(action: { appRouter.showLogSheet = true }) {
+                Image(systemName: "plus")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 56, height: 56)
+                    .glassEffect(.regular.interactive(), in: .circle)
+            }
+            .padding(.trailing, 16)
+            .padding(.bottom, 8)
+        }
+        .sheet(isPresented: $appRouter.showLogSheet) {
+            Text("Log Sheet")
+        }
+        .environment(appRouter)
+        .environment(tabRouter)
     }
 }
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .modelContainer(PreviewData.container)
 }
