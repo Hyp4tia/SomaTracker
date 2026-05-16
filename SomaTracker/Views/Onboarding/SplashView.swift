@@ -6,70 +6,79 @@ struct SplashView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) {
-                SomaColors.navy
-                    .ignoresSafeArea()
+            GeometryReader { geo in
+                let totalHeight = geo.size.height
+                let cardHeight = totalHeight * 0.55  // ← was 0.47
 
-                VStack(spacing: 0) {
-                    Spacer(minLength: 100)
+                ZStack(alignment: .bottom) {
+                    SomaColors.navy
+                        .ignoresSafeArea()
 
-                    Image("soma-icon")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 96, height: 96)
+                    VStack(spacing: 0) {
+                        Spacer()
 
-                    Text("Track what\nmatters.")
-                        .font(.system(size: 34, weight: .bold, design: .default))
-                        .foregroundStyle(SomaColors.white)
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(4)
-                        .padding(.top, 58)
+                        Image("soma-icon")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 80, height: 80)
+                            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
-                    Text("Calories, water, protein, steps. Four\nhabits. One simple tracker.")
-                        .font(SomaTypography.body)
-                        .foregroundStyle(SomaColors.white.opacity(0.62))
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(5)
-                        .padding(.top, 24)
-
-                    Spacer()
-                        .frame(height: 430)
-                }
-
-                VStack(spacing: 28) {
-                    NavigationLink {
-                        NameInputView(draft: $draft)
-                    } label: {
-                        Text("Get Started")
-                            .font(SomaTypography.body.weight(.bold))
+                        Text("Track what\nmatters.")
+                            .font(.system(size: 34, weight: .bold, design: .default))
                             .foregroundStyle(SomaColors.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 60)
-                            .background(SomaColors.navy)
-                            .clipShape(Capsule())
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.top, 116)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(4)
+                            .padding(.top, 24)
 
-                    Image("splash-illustration")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: 230)
-                        .frame(maxHeight: 210)
-                        .padding(.bottom, 20)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 455)
-                .background(SomaColors.white)
-                .clipShape(
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: 24,
-                        bottomLeadingRadius: 0,
-                        bottomTrailingRadius: 0,
-                        topTrailingRadius: 24,
-                        style: .continuous
+                        Text("Calories, water, protein, steps.\nFour habits. One simple tracker.")
+                            .font(.system(size: 16))
+                            .foregroundStyle(SomaColors.white.opacity(0.62))
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(5)
+                            .padding(.top, 16)
+                            .padding(.bottom, 28)
+
+                        Color.clear.frame(height: cardHeight)
+                    }
+
+                    VStack(spacing: 0) {
+                        Spacer().frame(height: 48)
+
+                        NavigationLink {
+                            NameInputView(draft: $draft)
+                        } label: {
+                            Text("Get Started")
+                                .font(SomaTypography.body.weight(.bold))
+                                .foregroundStyle(SomaColors.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 56)
+                                .background(SomaColors.navy)
+                                .clipShape(Capsule())
+                        }
+                        .padding(.horizontal, 28)
+
+                        Spacer()
+
+                        Image("splash-illustration")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 360)
+                            .padding(.bottom, 32 + geo.safeAreaInsets.bottom)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: cardHeight)
+                    .background(SomaColors.white)
+                    .clipShape(
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 32,
+                            bottomLeadingRadius: 0,
+                            bottomTrailingRadius: 0,
+                            topTrailingRadius: 32,
+                            style: .continuous
+                        )
                     )
-                )
+                    .ignoresSafeArea(edges: .bottom)
+                }
                 .ignoresSafeArea(edges: .bottom)
             }
             .navigationBarBackButtonHidden()
