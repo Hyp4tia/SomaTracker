@@ -63,7 +63,7 @@ struct SomaSegmentedToggle: View {
             }
         }
         .pickerStyle(.segmented)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 4)
     }
 }
 
