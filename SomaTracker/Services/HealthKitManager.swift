@@ -36,6 +36,8 @@ final class HealthKitManager {
     // MARK: - Fetch
 
     func fetchTodaySteps() async -> Int {
+        guard HKHealthStore.isHealthDataAvailable() else { return 0 }
+
         let stepType = HKQuantityType(.stepCount)
         let startOfDay = Calendar.current.startOfDay(for: .now)
         let predicate = HKQuery.predicateForSamples(withStart: startOfDay, end: .now)
@@ -53,10 +55,21 @@ final class HealthKitManager {
         }
     }
 
+    func refreshTodaySteps(modelContext: ModelContext) async {
+        let steps = await fetchTodaySteps()
+        todaySteps = steps
+
+        let log = DailyLog.fetchOrCreateToday(context: modelContext)
+        log.steps = steps
+        try? modelContext.save()
+    }
+
     // MARK: - Observer
 
     func startObserving(modelContext: ModelContext) {
         self.modelContext = modelContext
+        guard observerQuery == nil else { return }
+
         let stepType = HKQuantityType(.stepCount)
 
         let query = HKObserverQuery(sampleType: stepType, predicate: nil) { [weak self] _, done, error in
@@ -65,11 +78,7 @@ final class HealthKitManager {
             guard error == nil else { return }
             Task { @MainActor [weak self] in
                 guard let self, let ctx = self.modelContext else { return }
-                let steps = await self.fetchTodaySteps()
-                self.todaySteps = steps
-                let log = DailyLog.fetchOrCreateToday(context: ctx)
-                log.steps = steps
-                try? ctx.save()
+                await self.refreshTodaySteps(modelContext: ctx)
             }
         }
 
