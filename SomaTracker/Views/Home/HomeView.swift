@@ -44,6 +44,30 @@ struct HomeView: View {
         "kcal · \(displayedCalorieLabel) Today"
     }
 
+    private var dailyWaterGoal: Int {
+        profile?.dailyWaterGoalML ?? 2_000
+    }
+
+    private var dailyProteinGoal: Int {
+        profile?.dailyProteinGoalG ?? 120
+    }
+
+    private var consumedProtein: Double {
+        todayLog?.totalProtein ?? 0
+    }
+
+    private var consumedWater: Int {
+        todayLog?.totalWater ?? 0
+    }
+
+    private var displayedProtein: Double {
+        selectedMode == .remaining ? Double(max(dailyProteinGoal - Int(consumedProtein.rounded()), 0)) : consumedProtein
+    }
+
+    private var displayedWater: Int {
+        selectedMode == .remaining ? max(dailyWaterGoal - consumedWater, 0) : consumedWater
+    }
+
     private var displayedSteps: Int {
         healthKitManager.todaySteps > 0 ? healthKitManager.todaySteps : (todayLog?.steps ?? 0)
     }
@@ -146,8 +170,8 @@ struct HomeView: View {
             StatsGridView(
                 calorieValue: displayedCalories,
                 calorieLabel: displayedCalorieLabel,
-                proteinG: todayLog?.totalProtein ?? 0,
-                waterML: todayLog?.totalWater ?? 0,
+                proteinG: displayedProtein,
+                waterML: displayedWater,
                 steps: displayedSteps
             )
             .padding(.top, 10)
