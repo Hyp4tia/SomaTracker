@@ -23,33 +23,36 @@ struct ContentView: View {
     // MARK: - Main tab view
 
     private var mainTabView: some View {
-        TabView(selection: $tabRouter.selectedTab) {
-            HomeView(healthKitManager: healthKitManager)
-                .tabItem { Label("Home", systemImage: "house") }
-                .tag(Tab.home)
+        ZStack(alignment: .bottomTrailing) {
+            TabView(selection: $tabRouter.selectedTab) {
+                HomeView(healthKitManager: healthKitManager)
+                    .tabItem { Label("Home", systemImage: "house") }
+                    .tag(Tab.home)
 
-            Text("Settings")
-                .font(SomaTypography.sectionTitle)
-                .foregroundStyle(Color(.label))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(SomaColors.white)
-                .tabItem { Label("Settings", systemImage: "gearshape") }
-                .tag(Tab.settings)
-        }
-        .overlay(alignment: .bottomTrailing) {
-            Button(action: { appRouter.showLogSheet = true }) {
-                Image(systemName: "plus")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 56, height: 56)
+                Text("Settings")
+                    .font(SomaTypography.sectionTitle)
+                    .foregroundStyle(Color(.label))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(SomaColors.white)
+                    .tabItem { Label("Settings", systemImage: "gearshape") }
+                    .tag(Tab.settings)
             }
-            .buttonStyle(.plain)
-            .glassEffect(.regular.interactive(), in: .circle)
-            .padding(.trailing, 20)
-            .padding(.bottom, 8)
+
+            Image(systemName: "plus")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 56, height: 56)
+                .background(.ultraThinMaterial, in: Circle())
+                .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
+                .contentShape(Circle())
+                .onTapGesture {
+                    appRouter.showLogSheet = true
+                }
+                .padding(.trailing, 20)
+                .padding(.bottom, 68)
         }
         .sheet(isPresented: $appRouter.showLogSheet) {
-            Text("Log Sheet")
+            LogSheetView()
         }
         .environment(appRouter)
         .environment(tabRouter)

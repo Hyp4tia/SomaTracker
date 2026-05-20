@@ -29,6 +29,7 @@ final class HealthKitManager {
             try await healthStore.requestAuthorization(toShare: [], read: [stepType])
             isAuthorized = true
         } catch {
+            print("[HealthKit] Authorization failed: \(error.localizedDescription)")
             isAuthorized = false
         }
     }
