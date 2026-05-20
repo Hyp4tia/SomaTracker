@@ -38,18 +38,22 @@ struct ContentView: View {
                     .tag(Tab.settings)
             }
 
-            Image(systemName: "plus")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 56, height: 56)
-                .background(.ultraThinMaterial, in: Circle())
-                .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
-                .contentShape(Circle())
-                .onTapGesture {
-                    appRouter.showLogSheet = true
-                }
-                .padding(.trailing, 20)
-                .padding(.bottom, 68)
+            ZStack {
+                Color.clear
+                    .frame(width: 56, height: 56)
+                    .glassEffect(.regular, in: .circle)
+
+                Image(systemName: "plus")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.primary)
+            }
+            .frame(width: 56, height: 56)
+            .contentShape(Circle())
+            .onTapGesture {
+                appRouter.showLogSheet = true
+            }
+            .padding(.trailing, 20)
+            .padding(.bottom, 68)
         }
         .sheet(isPresented: $appRouter.showLogSheet) {
             LogSheetView()

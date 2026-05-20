@@ -67,7 +67,7 @@ struct WeeklyBarChart: View {
         }
 
         return (0..<7).compactMap { offset in
-            guard let date = calendar.date(byAdding: .day, value: offset - 6, to: today) else {
+            guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else {
                 return nil
             }
 
