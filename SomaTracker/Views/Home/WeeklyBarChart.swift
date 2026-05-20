@@ -8,36 +8,62 @@ struct WeeklyBarChart: View {
     private let maxValue = 4_000
     private let calendar = Calendar.current
 
+    // Total: 248 (unchanged footprint)
+    // Bars:   190pt
+    // Labels:  18pt
+    // Buffer:  40pt (hidden behind white panel overlap)
+    private let totalHeight: CGFloat = 248
+    private let barHeight: CGFloat = 170
+    private let labelHeight: CGFloat = 18
+    private let bottomBuffer: CGFloat = 52
+
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 0) {
+            // Bars row
             HStack(alignment: .bottom, spacing: 12) {
                 yAxisLabels
 
                 HStack(alignment: .bottom, spacing: 18) {
                     ForEach(chartDays) { day in
-                        VStack(spacing: 12) {
-                            GeometryReader { proxy in
-                                let barHeight = proxy.size.height * day.normalizedValue
+                        GeometryReader { proxy in
+                            let barH = proxy.size.height * day.normalizedValue
 
-                                VStack {
-                                    Spacer()
-                                    Capsule()
-                                        .fill(day.isToday ? SomaColors.white : SomaColors.white.opacity(0.48))
-                                        .frame(height: isAnimated ? barHeight : 0)
-                                }
+                            VStack {
+                                Spacer()
+                                Capsule()
+                                    .fill(day.isToday ? SomaColors.white : SomaColors.white.opacity(0.48))
+                                    .frame(height: isAnimated ? barH : 0)
                             }
-                            .frame(height: 220)
-
-                            Text(day.label)
-                                .font(.system(size: 11, weight: .bold, design: .default))
-                                .foregroundStyle(SomaColors.white.opacity(0.78))
-                                .frame(width: 30)
                         }
                     }
                 }
                 .frame(maxWidth: .infinity)
             }
+            .frame(height: barHeight)
+            .padding(.bottom, 8)
+
+            // Day labels row
+            HStack(spacing: 12) {
+                Color.clear.frame(width: 26)
+
+                HStack(spacing: 18) {
+                    ForEach(chartDays) { day in
+                        Text(day.label)
+                            .font(.system(size: 11, weight: .bold, design: .default))
+                            .foregroundStyle(SomaColors.white.opacity(0.78))
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .frame(height: labelHeight)
+
+            // Buffer — eaten by white panel overlap
+            Spacer()
+                .frame(height: bottomBuffer)
         }
+        .frame(height: totalHeight)
+        .clipped()
         .onAppear {
             withAnimation(.spring(response: 0.7, dampingFraction: 0.82)) {
                 isAnimated = true
@@ -57,7 +83,7 @@ struct WeeklyBarChart: View {
                 }
             }
         }
-        .frame(width: 26, height: 248)
+        .frame(width: 26)
     }
 
     private var chartDays: [ChartDay] {
@@ -66,8 +92,9 @@ struct WeeklyBarChart: View {
             result[calendar.startOfDay(for: log.date), default: 0] += log.totalCalories
         }
 
+        // Oldest on left, today on right
         return (0..<7).compactMap { offset in
-            guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else {
+            guard let date = calendar.date(byAdding: .day, value: offset - 6, to: today) else {
                 return nil
             }
 
