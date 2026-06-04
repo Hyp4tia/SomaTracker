@@ -10,6 +10,7 @@ struct HomeView: View {
 
     @State private var selectedMode: SomaSegmentedToggleOption = .remaining
     @State private var didPrepareToday = false
+    @State private var showWaterDetail = false
 
     private var profile: UserProfile? {
         profiles.first
@@ -72,6 +73,43 @@ struct HomeView: View {
         healthKitManager.todaySteps > 0 ? healthKitManager.todaySteps : (todayLog?.steps ?? 0)
     }
 
+    private var yesterdayCalories: Int {
+        let calendar = Calendar.current
+        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: .now)) else {
+            return 0
+        }
+        return logs.first { calendar.isDate($0.date, inSameDayAs: yesterday) }?.totalCalories ?? 0
+    }
+
+    private var dailyStepGoal: Int { 10_000 }
+
+    // Steps remaining to goal, or steps beyond goal once reached.
+    private var stepProgress: (number: Int, label: String, icon: String, reached: Bool) {
+        let steps = displayedSteps
+        let goal = dailyStepGoal
+
+        if steps >= goal {
+            return (steps - goal, "Steps ahead", "arrow.up", true)
+        } else {
+            return (goal - steps, "Steps to go", "figure.walk", false)
+        }
+    }
+
+    // Compares today's consumed calories against yesterday's.
+    private var calorieTrend: (text: String, isUp: Bool, hasData: Bool) {
+        let today = consumedCalories
+        let yesterday = yesterdayCalories
+
+        guard yesterday > 0 else {
+            // No baseline to compare against yet.
+            return ("—", true, false)
+        }
+
+        let change = (Double(today - yesterday) / Double(yesterday)) * 100
+        let rounded = Int(change.rounded())
+        return ("\(abs(rounded))%", rounded >= 0, true)
+    }
+
     var body: some View {
         GeometryReader { proxy in
             let panelHeight = max(464, proxy.size.height * 0.55)
@@ -95,6 +133,9 @@ struct HomeView: View {
                 statsPanel
                     .frame(height: panelHeight)
             }
+            .sheet(isPresented: $showWaterDetail) {
+                WaterLogSheetView()
+            }
             .task {
                 guard !didPrepareToday else { return }
                 didPrepareToday = true
@@ -110,35 +151,74 @@ struct HomeView: View {
     }
 
     private var topChrome: some View {
-        HStack {
-            HStack(spacing: 7) {
-                Image(systemName: "chart.line.uptrend.xyaxis")
-                    .font(.system(size: 12, weight: .bold, design: .default))
+        let trend = calorieTrend
+        let steps = stepProgress
+        let trendColor: Color = !trend.hasData
+            ? SomaColors.white.opacity(0.7)
+            : (trend.isUp
+                ? Color(red: 0.36, green: 0.92, blue: 0.55)
+                : Color(red: 1.0, green: 0.56, blue: 0.46))
 
-                Text("69%")
-                    .foregroundStyle(Color(red: 0.38, green: 0.82, blue: 1.0))
+        return HStack(alignment: .center, spacing: 14) {
+            // Steps column
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Image(systemName: steps.icon)
+                        .font(.system(size: 15, weight: .bold, design: .default))
+                        .foregroundStyle(SomaColors.white)
 
-                Text("vs yesterday")
+                    Text(steps.number.formatted())
+                        .font(.system(size: 22, weight: .bold, design: .default))
+                        .foregroundStyle(SomaColors.white)
+                }
+
+                Text(steps.label)
+                    .font(.system(size: 12, weight: .medium, design: .default))
+                    .foregroundStyle(SomaColors.white.opacity(0.6))
+            }
+
+            // Divider
+            Rectangle()
+                .fill(SomaColors.white.opacity(0.2))
+                .frame(width: 1, height: 38)
+
+            // Trend column — today's intake vs yesterday
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Image(systemName: trend.isUp ? "chart.line.uptrend.xyaxis" : "chart.line.downtrend.xyaxis")
+                        .font(.system(size: 14, weight: .bold, design: .default))
+                        .foregroundStyle(trendColor)
+
+                    Text(trend.text)
+                        .font(.system(size: 22, weight: .bold, design: .default))
+                        .foregroundStyle(trendColor)
+                }
+
+                Text(!trend.hasData
+                    ? "vs yesterday"
+                    : (trend.isUp ? "Higher than yesterday" : "Lower than yesterday"))
+                    .font(.system(size: 12, weight: .medium, design: .default))
+                    .foregroundStyle(SomaColors.white.opacity(0.6))
+            }
+
+            Spacer(minLength: 8)
+
+            // Water intake button — Liquid Glass circle
+            ZStack {
+                Color.clear
+                    .frame(width: 56, height: 56)
+                    .glassEffect(.regular, in: .circle)
+
+                Image(systemName: "waterbottle.fill")
+                    .font(.system(size: 23, weight: .bold, design: .default))
                     .foregroundStyle(SomaColors.white)
             }
-            .font(.system(size: 14, weight: .bold, design: .default))
-            .padding(.horizontal, 14)
-            .frame(height: 36)
-            .background(SomaColors.white.opacity(0.22))
-            .clipShape(Capsule())
-
-            Spacer()
-
-            Button {} label: {
-                Text(profileInitials)
-                    .font(.system(size: 16, weight: .bold, design: .default))
-                    .foregroundStyle(SomaColors.navy)
-                    .frame(width: 48, height: 48)
-                    .background(SomaColors.white.opacity(0.68))
-                    .clipShape(Circle())
+            .frame(width: 56, height: 56)
+            .contentShape(Circle())
+            .onTapGesture {
+                showWaterDetail = true
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Profile")
+            .accessibilityLabel("Water intake")
         }
     }
 
@@ -194,20 +274,6 @@ struct HomeView: View {
         .ignoresSafeArea(edges: .bottom)
     }
 
-    private var profileInitials: String {
-        guard let name = profile?.name.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
-            return "S"
-        }
-
-        let initials = name
-            .split(separator: " ")
-            .prefix(2)
-            .compactMap(\.first)
-            .map(String.init)
-            .joined()
-
-        return initials.isEmpty ? "S" : initials.uppercased()
-    }
 }
 
 #Preview {

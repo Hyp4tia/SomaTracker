@@ -29,11 +29,9 @@ struct ContentView: View {
                     .tabItem { Label("Home", systemImage: "house") }
                     .tag(Tab.home)
 
-                Text("Settings")
-                    .font(SomaTypography.sectionTitle)
-                    .foregroundStyle(Color(.label))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(SomaColors.white)
+                NavigationStack {
+                        SettingsView()
+                    }
                     .tabItem { Label("Settings", systemImage: "gearshape") }
                     .tag(Tab.settings)
             }
