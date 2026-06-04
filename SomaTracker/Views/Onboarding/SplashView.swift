@@ -57,14 +57,12 @@ struct SplashView: View {
                         }
                         .padding(.horizontal, 28)
 
-                        Spacer()
-
-                        Image("splash-illustration")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 360)
-                            .padding(.bottom, 32 + geo.safeAreaInsets.bottom)
+                        SplashAnimationView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .padding(.top, 8)
+                            .padding(.bottom, geo.safeAreaInsets.bottom)
                     }
+                    .clipped()
                     .frame(maxWidth: .infinity)
                     .frame(height: cardHeight)
                     .background(SomaColors.white)

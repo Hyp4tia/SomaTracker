@@ -4,7 +4,8 @@ struct StatsGridView: View {
     let calorieValue: Int
     let calorieLabel: String
     let proteinG: Double
-    let waterML: Int
+    let waterValue: Int
+    let waterUnit: String
     let steps: Int
 
     var body: some View {
@@ -18,7 +19,7 @@ struct StatsGridView: View {
             horizontalDivider
 
             HStack(spacing: 0) {
-                StatGridCell(value: waterML.formatted(), unit: "ml", label: "Water")
+                StatGridCell(value: waterValue.formatted(), unit: waterUnit, label: "Water")
                 verticalDivider
                 StatGridCell(value: steps.formatted(), unit: "", label: "Steps")
             }
@@ -76,7 +77,8 @@ private struct StatGridCell: View {
         calorieValue: 580,
         calorieLabel: "Remaining",
         proteinG: 100,
-        waterML: 1530,
+        waterValue: 1530,
+        waterUnit: "ml",
         steps: 5230
     )
     .padding()

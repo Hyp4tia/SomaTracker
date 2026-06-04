@@ -7,10 +7,15 @@ struct SettingsView: View {
     @Environment(AppRouter.self) private var appRouter
     @Query private var profiles: [UserProfile]
 
+    @StateObject private var notificationManager = NotificationManager.shared
+    @AppStorage(Units.storageKey) private var unitSystemRaw = UnitSystem.metric.rawValue
+
     @State private var editingGoal: GoalType?
     @State private var goalDraftValue = ""
     @State private var showResetConfirmation = false
-    @State private var notificationsEnabled = false
+    @State private var showUnitPicker = false
+
+    private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
 
     private var profile: UserProfile? { profiles.first }
 
@@ -80,13 +85,21 @@ struct SettingsView: View {
             Button("Save") { saveGoal() }
             Button("Cancel", role: .cancel) { editingGoal = nil }
         } message: {
-            Text("Enter your daily \(editingGoal?.title.lowercased() ?? "") goal in \(editingGoal?.unit ?? "")")
+            Text("Enter your daily \(editingGoal?.title.lowercased() ?? "") goal in \(editingGoalUnit)")
         }
         .alert("Reset All Data", isPresented: $showResetConfirmation) {
             Button("Reset", role: .destructive) { resetAllData() }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will delete all your logs, entries, and profile data. This action cannot be undone.")
+        }
+        .confirmationDialog("Units", isPresented: $showUnitPicker, titleVisibility: .visible) {
+            ForEach(UnitSystem.allCases) { system in
+                Button(system.title) { unitSystemRaw = system.rawValue }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Choose how measurements are displayed.")
         }
     }
 
@@ -162,7 +175,7 @@ struct SettingsView: View {
                 goalRow(
                     icon: "drop.fill",
                     title: "Daily Water",
-                    value: "\(profile?.dailyWaterGoalML ?? 2_000) ml",
+                    value: "\(Units.waterValue(ml: profile?.dailyWaterGoalML ?? 2_000, system: unitSystem)) \(Units.waterUnit(unitSystem))",
                     goalType: .water
                 )
 
@@ -190,7 +203,7 @@ struct SettingsView: View {
             editingGoal = goalType
             switch goalType {
             case .calories: goalDraftValue = "\(profile?.dailyCalorieGoal ?? 2_000)"
-            case .water: goalDraftValue = "\(profile?.dailyWaterGoalML ?? 2_000)"
+            case .water: goalDraftValue = "\(Units.waterValue(ml: profile?.dailyWaterGoalML ?? 2_000, system: unitSystem))"
             case .protein: goalDraftValue = "\(profile?.dailyProteinGoalG ?? 120)"
             }
         } label: {
@@ -243,7 +256,7 @@ struct SettingsView: View {
 
                     Spacer()
 
-                    Toggle("", isOn: $notificationsEnabled)
+                    Toggle("", isOn: $notificationManager.isEnabled)
                         .labelsHidden()
                 }
                 .padding(.horizontal, 16)
@@ -251,30 +264,35 @@ struct SettingsView: View {
 
                 Divider().padding(.leading, 56)
 
-                HStack(spacing: 14) {
-                    Image(systemName: "ruler.fill")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(SomaColors.navy)
-                        .frame(width: 32, height: 32)
-                        .background(SomaColors.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                Button {
+                    showUnitPicker = true
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: "ruler.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(SomaColors.navy)
+                            .frame(width: 32, height: 32)
+                            .background(SomaColors.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-                    Text("Units")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Color(.label))
+                        Text("Units")
+                            .font(.system(size: 16))
+                            .foregroundStyle(Color(.label))
 
-                    Spacer()
+                        Spacer()
 
-                    Text("Metric")
-                        .font(.system(size: 15))
-                        .foregroundStyle(Color(.secondaryLabel))
+                        Text(unitSystem.title)
+                            .font(.system(size: 15))
+                            .foregroundStyle(Color(.secondaryLabel))
 
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color(.tertiaryLabel))
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color(.tertiaryLabel))
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 13)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 13)
+                .buttonStyle(.plain)
             }
             .background(Color(.systemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -417,12 +435,21 @@ struct SettingsView: View {
 
         switch goal {
         case .calories: profile.dailyCalorieGoal = value
-        case .water: profile.dailyWaterGoalML = value
+        case .water: profile.dailyWaterGoalML = Units.waterToML(value, system: unitSystem)
         case .protein: profile.dailyProteinGoalG = value
         }
 
         try? modelContext.save()
         editingGoal = nil
+    }
+
+    private var editingGoalUnit: String {
+        switch editingGoal {
+        case .water: return Units.waterUnit(unitSystem)
+        case .calories: return "kcal"
+        case .protein: return "g"
+        case .none: return ""
+        }
     }
 
     private func resetAllData() {
@@ -480,6 +507,7 @@ private enum GoalType {
 struct ProfileEditView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var profiles: [UserProfile]
+    @AppStorage(Units.storageKey) private var unitSystemRaw = UnitSystem.metric.rawValue
 
     @State private var name = ""
     @State private var age = ""
@@ -487,6 +515,7 @@ struct ProfileEditView: View {
     @State private var height = ""
 
     private var profile: UserProfile? { profiles.first }
+    private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
 
     var body: some View {
         Form {
@@ -497,9 +526,9 @@ struct ProfileEditView: View {
             }
 
             Section("Body Stats") {
-                TextField("Weight (kg)", text: $weight)
+                TextField("Weight (\(Units.weightUnit(unitSystem)))", text: $weight)
                     .keyboardType(.decimalPad)
-                TextField("Height (cm)", text: $height)
+                TextField("Height (\(Units.heightUnit(unitSystem)))", text: $height)
                     .keyboardType(.decimalPad)
             }
         }
@@ -509,15 +538,15 @@ struct ProfileEditView: View {
             guard let profile else { return }
             name = profile.name
             age = "\(profile.age)"
-            weight = String(format: "%.1f", profile.weightKG)
-            height = String(format: "%.1f", profile.heightCM)
+            weight = String(format: "%.1f", Units.weightValue(kg: profile.weightKG, system: unitSystem))
+            height = String(format: "%.1f", Units.heightValue(cm: profile.heightCM, system: unitSystem))
         }
         .onDisappear {
             guard let profile else { return }
             profile.name = name
             profile.age = Int(age) ?? profile.age
-            profile.weightKG = Double(weight) ?? profile.weightKG
-            profile.heightCM = Double(height) ?? profile.heightCM
+            if let w = Double(weight) { profile.weightKG = Units.weightToKG(w, system: unitSystem) }
+            if let h = Double(height) { profile.heightCM = Units.heightToCM(h, system: unitSystem) }
             try? modelContext.save()
         }
     }

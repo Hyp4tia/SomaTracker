@@ -7,6 +7,8 @@ struct NameInputView: View {
         ZStack {
             SomaColors.navy
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { dismissKeyboard() }
 
             VStack(spacing: 0) {
                 OnboardingProgressDots(step: 1)
@@ -45,6 +47,7 @@ struct NameInputView: View {
             }
             .padding(.horizontal, 40)
         }
+        .dismissKeyboardOnInteraction()
         .navigationBarBackButtonHidden()
     }
 }

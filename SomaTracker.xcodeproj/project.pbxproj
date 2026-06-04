@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		AA0000010000000000000003 /* DotLottie in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000010000000000000002 /* DotLottie */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		6666B14D2FB7146100CEBD01 /* SomaTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SomaTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA0000010000000000000003 /* DotLottie in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +70,7 @@
 			);
 			name = SomaTracker;
 			packageProductDependencies = (
+				AA0000010000000000000002 /* DotLottie */,
 			);
 			productName = SomaTracker;
 			productReference = 6666B14D2FB7146100CEBD01 /* SomaTracker.app */;
@@ -94,6 +100,9 @@
 			);
 			mainGroup = 6666B1442FB7146100CEBD01;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				AA0000010000000000000001 /* XCRemoteSwiftPackageReference "dotlottie-ios" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 6666B14E2FB7146100CEBD01 /* Products */;
 			projectDirPath = "";
@@ -350,6 +359,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		AA0000010000000000000001 /* XCRemoteSwiftPackageReference "dotlottie-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/LottieFiles/dotlottie-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.6.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AA0000010000000000000002 /* DotLottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA0000010000000000000001 /* XCRemoteSwiftPackageReference "dotlottie-ios" */;
+			productName = DotLottie;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 6666B1452FB7146100CEBD01 /* Project object */;
 }

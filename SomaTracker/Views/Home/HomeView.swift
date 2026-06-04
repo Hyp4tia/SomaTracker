@@ -8,6 +8,9 @@ struct HomeView: View {
 
     let healthKitManager: HealthKitManager
 
+    @AppStorage(Units.storageKey) private var unitSystemRaw = UnitSystem.metric.rawValue
+    private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
+
     @State private var selectedMode: SomaSegmentedToggleOption = .remaining
     @State private var didPrepareToday = false
     @State private var showWaterDetail = false
@@ -112,7 +115,9 @@ struct HomeView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let panelHeight = max(464, proxy.size.height * 0.55)
+            // Floor keeps shorter devices (e.g. iPhone 15 Pro) from letting the
+            // stats sit too close to the floating tab bar — matches taller phones.
+            let panelHeight = max(496, proxy.size.height * 0.55)
 
             ZStack(alignment: .bottom) {
                 SomaColors.navy
@@ -135,6 +140,7 @@ struct HomeView: View {
             }
             .sheet(isPresented: $showWaterDetail) {
                 WaterLogSheetView()
+                    .preferredColorScheme(.light)
             }
             .task {
                 guard !didPrepareToday else { return }
@@ -251,7 +257,8 @@ struct HomeView: View {
                 calorieValue: displayedCalories,
                 calorieLabel: displayedCalorieLabel,
                 proteinG: displayedProtein,
-                waterML: displayedWater,
+                waterValue: Units.waterValue(ml: displayedWater, system: unitSystem),
+                waterUnit: Units.waterUnit(unitSystem),
                 steps: displayedSteps
             )
             .padding(.top, 10)

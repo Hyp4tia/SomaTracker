@@ -1,5 +1,31 @@
 import SwiftUI
 
+/// Resigns the first responder, dismissing the keyboard from anywhere.
+@MainActor
+func dismissKeyboard() {
+    UIApplication.shared.sendAction(
+        #selector(UIResponder.resignFirstResponder),
+        to: nil,
+        from: nil,
+        for: nil
+    )
+}
+
+extension View {
+    /// Adds a "Done" button above the keyboard and lets a tap anywhere on the
+    /// background dismiss it — so onboarding fields never trap the user.
+    func dismissKeyboardOnInteraction() -> some View {
+        self
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { dismissKeyboard() }
+                        .fontWeight(.semibold)
+                }
+            }
+    }
+}
+
 struct OnboardingProgressDots: View {
     let step: Int
 

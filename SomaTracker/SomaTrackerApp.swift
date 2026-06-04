@@ -29,6 +29,9 @@ struct SomaTrackerApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                // The app uses a fixed navy + white brand design that isn't built
+                // for dark-mode adaptation, so lock it to its intended appearance.
+                .preferredColorScheme(.light)
         }
         .modelContainer(sharedModelContainer)
     }

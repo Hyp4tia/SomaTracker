@@ -12,6 +12,8 @@ struct BodyStatsView: View {
         ZStack {
             SomaColors.navy
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { dismissKeyboard() }
 
             VStack(spacing: 0) {
                 OnboardingProgressDots(step: 2)
@@ -55,6 +57,7 @@ struct BodyStatsView: View {
             }
             .padding(.horizontal, 24)
         }
+        .dismissKeyboardOnInteraction()
         .navigationBarBackButtonHidden()
     }
 }

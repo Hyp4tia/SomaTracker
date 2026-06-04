@@ -6,10 +6,16 @@ struct WaterLogSheetView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var logs: [DailyLog]
 
-    @State private var pendingAmount = 0
+    @AppStorage(Units.storageKey) private var unitSystemRaw = UnitSystem.metric.rawValue
+    private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
+
+    @State private var pendingAmount = 0  // always stored in ml
+    @State private var showCustomInput = false
 
     private let waterBlue = Color(red: 0.38, green: 0.82, blue: 1.0)
-    private let quickAmounts = [200, 250, 500, 750]
+
+    private var waterUnit: String { Units.waterUnit(unitSystem) }
+    private func display(_ ml: Int) -> Int { Units.waterValue(ml: ml, system: unitSystem) }
 
     private var profileWaterGoal: Int {
         // Read the goal off the same query the rest of the app uses.
@@ -61,7 +67,7 @@ struct WaterLogSheetView: View {
 
                 // Big projected total
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(projectedTotal.formatted())
+                    Text(display(projectedTotal).formatted())
                         .font(.system(size: 64, weight: .black, design: .rounded))
                         .foregroundStyle(Color(.label))
                         .lineLimit(1)
@@ -69,13 +75,13 @@ struct WaterLogSheetView: View {
                         .contentTransition(.numericText())
                         .animation(.snappy(duration: 0.2), value: projectedTotal)
 
-                    Text("ml")
+                    Text(waterUnit)
                         .font(.system(size: 22, weight: .bold, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
                 .padding(.top, 18)
 
-                Text("of \(profileWaterGoal.formatted()) ml goal today")
+                Text("of \(display(profileWaterGoal).formatted()) \(waterUnit) goal today")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color(.secondaryLabel))
                     .padding(.top, 2)
@@ -108,19 +114,34 @@ struct WaterLogSheetView: View {
                 quickAddGrid
                     .padding(.horizontal, 20)
 
-                // Save button
-                Button {
-                    save()
-                } label: {
-                    Text(pendingAmount > 0 ? "Add \(pendingAmount) ml" : "Add Water")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(SomaColors.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 54)
-                        .background(pendingAmount > 0 ? waterBlue : waterBlue.opacity(0.4))
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                // Save button + custom amount
+                HStack(spacing: 12) {
+                    Button {
+                        save()
+                    } label: {
+                        Text(pendingAmount > 0 ? "Add \(display(pendingAmount)) \(waterUnit)" : "Add Water")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(SomaColors.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 54)
+                            .background(pendingAmount > 0 ? waterBlue : waterBlue.opacity(0.4))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .disabled(pendingAmount == 0)
+
+                    Button {
+                        showCustomInput = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundStyle(waterBlue)
+                            .frame(width: 54, height: 54)
+                            .background(Color(.tertiarySystemFill))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Add custom amount")
                 }
-                .disabled(pendingAmount == 0)
                 .padding(.horizontal, 20)
                 .padding(.top, 14)
                 .padding(.bottom, 8)
@@ -135,6 +156,11 @@ struct WaterLogSheetView: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .sheet(isPresented: $showCustomInput) {
+            // Dismiss this water sheet too, so the user returns to the home page.
+            CustomWaterEntryView(onAdded: { dismiss() })
+                .preferredColorScheme(.light)
+        }
     }
 
     // MARK: - Header
@@ -164,7 +190,7 @@ struct WaterLogSheetView: View {
 
             Spacer()
 
-            Text("Yesterday: \(yesterdayWater.formatted()) ml")
+            Text("Yesterday: \(display(yesterdayWater).formatted()) \(waterUnit)")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color(.secondaryLabel))
         }
@@ -201,7 +227,7 @@ struct WaterLogSheetView: View {
                                     .background(waterBlue.opacity(0.15))
                                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-                                Text("\(entry.amount) ml")
+                                Text("\(display(entry.amount)) \(waterUnit)")
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(Color(.label))
 
@@ -230,16 +256,16 @@ struct WaterLogSheetView: View {
         let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 2)
 
         return LazyVGrid(columns: columns, spacing: 12) {
-            ForEach(quickAmounts, id: \.self) { amount in
+            ForEach(Units.waterQuickAmounts(unitSystem), id: \.self) { amount in
                 Button {
                     withAnimation(.snappy(duration: 0.2)) {
-                        pendingAmount += amount
+                        pendingAmount += Units.waterToML(amount, system: unitSystem)
                     }
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "plus")
                             .font(.system(size: 14, weight: .bold))
-                        Text("\(amount) ml")
+                        Text("\(amount) \(waterUnit)")
                             .font(.system(size: 16, weight: .semibold))
                     }
                     .foregroundStyle(Color(.label))
@@ -275,6 +301,157 @@ struct WaterLogSheetView: View {
         log.waterEntries.append(entry)
         try? modelContext.save()
         dismiss()
+    }
+}
+
+// MARK: - Custom Water Entry (calculator)
+
+struct CustomWaterEntryView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @AppStorage(Units.storageKey) private var unitSystemRaw = UnitSystem.metric.rawValue
+
+    /// Called after the entry is saved — used to also close the parent water sheet.
+    var onAdded: () -> Void = {}
+
+    @State private var displayValue = "0"
+
+    private let waterBlue = Color(red: 0.38, green: 0.82, blue: 1.0)
+    private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
+    private var unit: String { Units.waterUnit(unitSystem) }
+    private var numericValue: Int { Int(displayValue) ?? 0 }
+    private var canSave: Bool { numericValue > 0 }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                headerBadge
+                    .padding(.top, 16)
+
+                // Display
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(displayValue)
+                        .font(.system(size: 64, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color(.label))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+
+                    Text(unit)
+                        .font(.system(size: 22, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                .contentTransition(.numericText())
+                .animation(.snappy(duration: 0.15), value: displayValue)
+                .padding(.top, 18)
+
+                Spacer(minLength: 16)
+
+                numberPad
+                    .padding(.horizontal, 20)
+
+                Button {
+                    save()
+                } label: {
+                    Text("Add Water")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(SomaColors.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(canSave ? waterBlue : waterBlue.opacity(0.4))
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .disabled(!canSave)
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
+            }
+            .navigationTitle("Custom Amount")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.large])
+    }
+
+    private var headerBadge: some View {
+        Image(systemName: "waterbottle.fill")
+            .font(.system(size: 26, weight: .bold))
+            .foregroundStyle(SomaColors.white)
+            .frame(width: 56, height: 56)
+            .background(Color(red: 0.20, green: 0.62, blue: 0.92))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var numberPad: some View {
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
+
+        return LazyVGrid(columns: columns, spacing: 12) {
+            ForEach(1...9, id: \.self) { digit in
+                numberButton("\(digit)")
+            }
+            numberButton("00")
+            numberButton("0")
+            deleteButton
+        }
+    }
+
+    private func numberButton(_ label: String) -> some View {
+        Button {
+            appendDigit(label)
+        } label: {
+            Text(label)
+                .font(.system(size: 24, weight: .medium, design: .rounded))
+                .foregroundStyle(Color(.label))
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(Color(.tertiarySystemFill))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var deleteButton: some View {
+        Button {
+            deleteLastDigit()
+        } label: {
+            Image(systemName: "delete.backward")
+                .font(.system(size: 22, weight: .medium))
+                .foregroundStyle(Color(.label))
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .background(Color(.tertiarySystemFill))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func appendDigit(_ digit: String) {
+        if displayValue == "0" {
+            if digit == "0" || digit == "00" { return }
+            displayValue = digit
+        } else {
+            guard displayValue.count < 6 else { return }
+            displayValue += digit
+        }
+    }
+
+    private func deleteLastDigit() {
+        displayValue = String(displayValue.dropLast())
+        if displayValue.isEmpty { displayValue = "0" }
+    }
+
+    private func save() {
+        guard canSave else { return }
+        let log = DailyLog.fetchOrCreateToday(context: modelContext)
+        let ml = Units.waterToML(numericValue, system: unitSystem)
+        log.waterEntries.append(WaterEntry(amount: ml))
+        try? modelContext.save()
+
+        dismiss()      // close this calculator
+        onAdded()      // close the parent water sheet → back to home
     }
 }
 

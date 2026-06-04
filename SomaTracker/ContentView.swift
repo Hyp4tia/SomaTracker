@@ -55,6 +55,7 @@ struct ContentView: View {
         }
         .sheet(isPresented: $appRouter.showLogSheet) {
             LogSheetView()
+                .preferredColorScheme(.light)
         }
         .environment(appRouter)
         .environment(tabRouter)

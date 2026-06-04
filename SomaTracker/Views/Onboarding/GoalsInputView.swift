@@ -12,6 +12,8 @@ struct GoalsInputView: View {
         ZStack {
             SomaColors.navy
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { dismissKeyboard() }
 
             VStack(spacing: 0) {
                 OnboardingProgressDots(step: 3)
@@ -58,6 +60,7 @@ struct GoalsInputView: View {
             }
             .padding(.horizontal, 24)
         }
+        .dismissKeyboardOnInteraction()
         .navigationBarBackButtonHidden()
     }
 
