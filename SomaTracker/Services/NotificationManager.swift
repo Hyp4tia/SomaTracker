@@ -14,6 +14,7 @@ final class NotificationManager: ObservableObject {
     private let center = UNUserNotificationCenter.current()
     private let storageKey = "notificationsEnabled"
     private let dailyReminderID = "soma.dailyReminder"
+    private let endOfDayReminderID = "soma.endOfDayReminder"
 
     @Published var isEnabled: Bool {
         didSet {
@@ -49,11 +50,33 @@ final class NotificationManager: ObservableObject {
 
     // MARK: - Scheduling
 
-    /// Schedules a repeating daily notification at the given time.
+    /// Schedules the morning "Track your day" reminder at the given time.
     func scheduleDailyReminder(hour: Int, minute: Int) {
+        scheduleReminder(
+            id: dailyReminderID,
+            title: "Track your day",
+            body: "Don't forget to log your meals and water intake today.",
+            hour: hour,
+            minute: minute
+        )
+    }
+
+    /// Schedules the end-of-day "Wrap up your day" reminder at the given time.
+    func scheduleEndOfDayReminder(hour: Int, minute: Int) {
+        scheduleReminder(
+            id: endOfDayReminderID,
+            title: "Wrap up your day",
+            body: "Log anything you missed before the day ends.",
+            hour: hour,
+            minute: minute
+        )
+    }
+
+    /// Schedules a repeating daily notification with the given content and time.
+    private func scheduleReminder(id: String, title: String, body: String, hour: Int, minute: Int) {
         let content = UNMutableNotificationContent()
-        content.title = "Track your day"
-        content.body = "Don't forget to log your meals and water intake today."
+        content.title = title
+        content.body = body
         content.sound = .default
 
         var dateComponents = DateComponents()
@@ -62,16 +85,16 @@ final class NotificationManager: ObservableObject {
 
         let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: true)
         let request = UNNotificationRequest(
-            identifier: dailyReminderID,
+            identifier: id,
             content: content,
             trigger: trigger
         )
 
         // Replace any existing reminder before scheduling a new one.
-        center.removePendingNotificationRequests(withIdentifiers: [dailyReminderID])
+        center.removePendingNotificationRequests(withIdentifiers: [id])
         center.add(request) { error in
             if let error {
-                print("[Notifications] Failed to schedule reminder: \(error.localizedDescription)")
+                print("[Notifications] Failed to schedule reminder \(id): \(error.localizedDescription)")
             }
         }
     }
@@ -84,7 +107,7 @@ final class NotificationManager: ObservableObject {
 
     // MARK: - Helpers
 
-    /// Requests permission and, if granted, schedules the default 9:00 AM reminder.
+    /// Requests permission and, if granted, schedules the default 11:00 AM and 9:00 PM reminders.
     private func enableNotifications() async {
         let granted = await requestPermission()
 
@@ -94,6 +117,7 @@ final class NotificationManager: ObservableObject {
             return
         }
 
-        scheduleDailyReminder(hour: 9, minute: 0)
+        scheduleDailyReminder(hour: 11, minute: 0)
+        scheduleEndOfDayReminder(hour: 21, minute: 0)
     }
 }

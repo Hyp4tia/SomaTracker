@@ -7,21 +7,22 @@ struct StatsGridView: View {
     let waterValue: Int
     let waterUnit: String
     let steps: Int
+    var scale: CGFloat = 1.0
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
-                StatGridCell(value: calorieValue.formatted(), unit: "Kcal", label: calorieLabel)
+                StatGridCell(value: calorieValue.formatted(), unit: "Kcal", label: calorieLabel, scale: scale)
                 verticalDivider
-                StatGridCell(value: Int(proteinG.rounded()).formatted(), unit: "g", label: "Protein")
+                StatGridCell(value: Int(proteinG.rounded()).formatted(), unit: "g", label: "Protein", scale: scale)
             }
 
             horizontalDivider
 
             HStack(spacing: 0) {
-                StatGridCell(value: waterValue.formatted(), unit: waterUnit, label: "Water")
+                StatGridCell(value: waterValue.formatted(), unit: waterUnit, label: "Water", scale: scale)
                 verticalDivider
-                StatGridCell(value: steps.formatted(), unit: "", label: "Steps")
+                StatGridCell(value: steps.formatted(), unit: "", label: "Steps", scale: scale)
             }
         }
     }
@@ -44,19 +45,20 @@ private struct StatGridCell: View {
     let value: String
     let unit: String
     let label: String
+    var scale: CGFloat = 1.0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 4 * scale) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(value)
-                    .font(.system(size: 30, weight: .bold, design: .default))
+                    .font(.system(size: 30 * scale, weight: .bold, design: .default))
                     .foregroundStyle(Color(.label))
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
 
                 if !unit.isEmpty {
                     Text(unit)
-                        .font(.system(size: 14, weight: .bold, design: .default))
+                        .font(.system(size: 14 * scale, weight: .bold, design: .default))
                         .foregroundStyle(Color(.secondaryLabel))
                 }
             }
@@ -67,7 +69,7 @@ private struct StatGridCell: View {
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 10)
+        .padding(.vertical, 10 * scale)
         .padding(.horizontal, 8)
     }
 }

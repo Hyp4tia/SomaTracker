@@ -115,9 +115,13 @@ struct HomeView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            // Floor keeps shorter devices (e.g. iPhone 15 Pro) from letting the
-            // stats sit too close to the floating tab bar — matches taller phones.
-            let panelHeight = max(496, proxy.size.height * 0.55)
+            // Panel scales with the screen; content scales to fit so the stats
+            // never clip behind the floating tab bar on shorter phones.
+            let panelHeight = max(430, proxy.size.height * 0.56)
+            let bottomClearance: CGFloat = 100          // white space that clears the floating tab bar
+            let referenceContentHeight: CGFloat = 413   // measured stats content height at scale 1.0
+            let safetyMargin: CGFloat = 16
+            let contentScale = min(1.0, max(0.78, (panelHeight - bottomClearance - safetyMargin) / referenceContentHeight))
 
             ZStack(alignment: .bottom) {
                 SomaColors.navy
@@ -135,8 +139,8 @@ struct HomeView: View {
                     Spacer(minLength: panelHeight - 16)
                 }
 
-                statsPanel
-                    .frame(height: panelHeight)
+                statsPanel(scale: contentScale, bottomClearance: bottomClearance)
+                    .frame(height: panelHeight, alignment: .top)
             }
             .sheet(isPresented: $showWaterDetail) {
                 WaterLogSheetView()
@@ -228,30 +232,29 @@ struct HomeView: View {
         }
     }
 
-    private var statsPanel: some View {
+    private func statsPanel(scale: CGFloat, bottomClearance: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Image(systemName: "flame.fill")
-                .font(.system(size: 19, weight: .bold, design: .default))
+                .font(.system(size: 19 * scale, weight: .bold, design: .default))
                 .foregroundStyle(SomaColors.white)
-                .frame(width: 40, height: 40)
+                .frame(width: 40 * scale, height: 40 * scale)
                 .background(Color.orange)
-                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-                .padding(.top, 24)
+                .clipShape(RoundedRectangle(cornerRadius: 11 * scale, style: .continuous))
+                .padding(.top, 24 * scale)
 
             Text(displayedCalories.formatted())
-                .font(.system(size: 78, weight: .black, design: .default))
+                .font(.system(size: 78 * scale, weight: .black, design: .default))
                 .foregroundStyle(Color(.label))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .padding(.top, 12)
+                .padding(.top, 12 * scale)
 
             Text(heroSubtitle)
                 .font(.system(size: 15, weight: .bold, design: .default))
                 .foregroundStyle(Color(.secondaryLabel))
-                .padding(.top, 0)
 
             SomaSegmentedToggle(selection: $selectedMode)
-                .padding(.top, 18)
+                .padding(.top, 18 * scale)
 
             StatsGridView(
                 calorieValue: displayedCalories,
@@ -259,14 +262,16 @@ struct HomeView: View {
                 proteinG: displayedProtein,
                 waterValue: Units.waterValue(ml: displayedWater, system: unitSystem),
                 waterUnit: Units.waterUnit(unitSystem),
-                steps: displayedSteps
+                steps: displayedSteps,
+                scale: scale
             )
-            .padding(.top, 10)
+            .padding(.top, 10 * scale)
 
-            Spacer(minLength: 86)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 24)
-        .padding(.bottom, 80)
+        .padding(.top, 4)
+        .padding(.bottom, bottomClearance)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(SomaColors.white)
         .clipShape(
