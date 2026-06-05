@@ -17,6 +17,9 @@ struct WeeklyBarChart: View {
     private let labelHeight: CGFloat = 18
     private let bottomBuffer: CGFloat = 52
 
+    // Empty-day "slot" placeholder: a short, faint capsule signalling a day exists.
+    private let placeholderHeight: CGFloat = 7
+
     var body: some View {
         VStack(spacing: 0) {
             // Bars row
@@ -31,8 +34,8 @@ struct WeeklyBarChart: View {
                             VStack {
                                 Spacer()
                                 Capsule()
-                                    .fill(day.isToday ? SomaColors.white : SomaColors.white.opacity(0.48))
-                                    .frame(height: isAnimated ? barH : 0)
+                                    .fill(barFill(for: day))
+                                    .frame(height: barFrameHeight(for: day, fullHeight: barH))
                             }
                         }
                     }
@@ -69,6 +72,20 @@ struct WeeklyBarChart: View {
                 isAnimated = true
             }
         }
+    }
+
+    private func barFill(for day: ChartDay) -> Color {
+        guard day.hasData else {
+            return SomaColors.white.opacity(0.12)  // empty-day slot
+        }
+        return day.isToday ? SomaColors.white : SomaColors.white.opacity(0.48)
+    }
+
+    private func barFrameHeight(for day: ChartDay, fullHeight: CGFloat) -> CGFloat {
+        guard day.hasData else {
+            return placeholderHeight  // fixed short slot, always visible
+        }
+        return isAnimated ? fullHeight : 0
     }
 
     private var yAxisLabels: some View {
@@ -116,6 +133,8 @@ private struct ChartDay: Identifiable {
     let isToday: Bool
 
     var id: Date { date }
+
+    var hasData: Bool { value > 0 }
 
     var normalizedValue: Double {
         min(Double(value) / Double(maxValue), 1)
