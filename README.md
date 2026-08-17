@@ -1,6 +1,6 @@
 # Soma
 
-**Soma** (ⲥⲱⲙⲁ — Coptic for "body") is a native iOS 26 health tracker that keeps things simple: calories, water, protein, and steps — nothing more, nothing synced to a server.
+**Soma** (ⲥⲱⲙⲁ - Coptic for "body") is a native iOS 26 health tracker that keeps things simple: calories, water, protein, and steps - nothing more, nothing synced to a server.
 
 ## Overview
 
@@ -14,19 +14,19 @@ No backend. No authentication. No accounts to manage. Soma stores everything loc
 - 🚶 Steps auto-synced from HealthKit
 - 📊 Weekly bar chart overview
 - 🎨 iOS 26 Liquid Glass UI throughout
-- 🔒 100% local storage — no data ever leaves the device
+- 🔒 100% local storage - no data ever leaves the device
 
 ## Tech Stack
 
 - **Swift 6 / SwiftUI**
-- **SwiftData** — local persistence, no backend
-- **HealthKit** — steps auto-sync
+- **SwiftData** - local persistence, no backend
+- **HealthKit** - steps auto-sync
 - **iOS 26** minimum target, Liquid Glass design system
 
 ## Architecture
 
-- `AppRouter` / `TabRouter` — navigation
-- `HealthKitManager` — `@Observable` wrapper around HealthKit reads
+- `AppRouter` / `TabRouter` - navigation
+- `HealthKitManager` - `@Observable` wrapper around HealthKit reads
 - Four core SwiftData models covering the app's tracked metrics
 
 ## Screens
@@ -66,7 +66,7 @@ Before building, make sure `Info.plist` includes:
 - `NSHealthShareUsageDescription`
 - `NSMotionUsageDescription`
 
-Both are required — HealthKit code will fail without them, and Apple will reject submissions missing either.
+Both are required - HealthKit code will fail without them, and Apple will reject submissions missing either.
 
 ## Status
 
@@ -74,7 +74,7 @@ Both are required — HealthKit code will fail without them, and Apple will reje
 
 ## Bundle ID
 
-`com.zeyad.soma` — locked after first App Store submission.
+`com.zeyad.soma` - locked after first App Store submission.
 
 ## License
 
