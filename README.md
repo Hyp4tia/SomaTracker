@@ -82,4 +82,4 @@ All rights reserved. *(Update this if you intend to open-source it.)*
 
 ## Contact
 
-Built by Hyp4tia. Reach out on [X]([https://x.com/](https://x.com/Hypatox))
+Built by Hyp4tia. Reach out on [X / Twitter](https://x.com/Hypatox)
