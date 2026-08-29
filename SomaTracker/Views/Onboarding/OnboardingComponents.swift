@@ -26,6 +26,32 @@ extension View {
     }
 }
 
+struct OnboardingTopBar: View {
+    let step: Int
+    var onBack: (() -> Void)? = nil
+
+    var body: some View {
+        ZStack {
+            if let onBack = onBack {
+                HStack {
+                    Button(action: onBack) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(SomaColors.white)
+                            .frame(width: 44, height: 44)
+                            .background(SomaColors.white.opacity(0.12))
+                            .clipShape(Circle())
+                    }
+                    Spacer()
+                }
+            }
+
+            OnboardingProgressDots(step: step)
+        }
+        .frame(height: 44)
+    }
+}
+
 struct OnboardingProgressDots: View {
     let step: Int
 
@@ -99,10 +125,14 @@ struct OnboardingPickerField: View {
             Menu {
                 Button("Male") { selection = "Male" }
                 Button("Female") { selection = "Female" }
+                Button("Other") { selection = "Other" }
             } label: {
                 HStack {
-                    Text(selection)
+                    Text(selection.isEmpty ? "Select" : selection)
                     Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(SomaColors.white.opacity(0.6))
                 }
                 .font(SomaTypography.body.weight(.bold))
                 .foregroundStyle(SomaColors.white)
@@ -120,17 +150,25 @@ struct OnboardingPickerField: View {
 }
 
 struct OnboardingContinueLabel: View {
-    let title: String
+    var title: String = "Continue"
+    var showArrow: Bool = true
     var foregroundColor: Color = SomaColors.navy
 
     var body: some View {
-        Text(title)
-            .font(SomaTypography.body.weight(.bold))
-            .foregroundStyle(foregroundColor)
-            .frame(maxWidth: .infinity)
-            .frame(height: 60)
-            .background(SomaColors.white)
-            .clipShape(Capsule())
+        HStack(spacing: 8) {
+            Text(title)
+                .font(SomaTypography.body.weight(.bold))
+
+            if showArrow {
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 15, weight: .bold))
+            }
+        }
+        .foregroundStyle(foregroundColor)
+        .frame(maxWidth: .infinity)
+        .frame(height: 60)
+        .background(SomaColors.white)
+        .clipShape(Capsule())
     }
 }
 

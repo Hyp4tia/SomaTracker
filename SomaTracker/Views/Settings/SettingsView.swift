@@ -6,6 +6,7 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppRouter.self) private var appRouter
     @Query private var profiles: [UserProfile]
+    @Query private var logs: [DailyLog]
 
     @StateObject private var notificationManager = NotificationManager.shared
     @AppStorage(Units.storageKey) private var unitSystemRaw = UnitSystem.metric.rawValue
@@ -13,70 +14,269 @@ struct SettingsView: View {
     @State private var editingGoal: GoalType?
     @State private var goalDraftValue = ""
     @State private var showResetConfirmation = false
-    @State private var showUnitPicker = false
+    @State private var showExportSheet = false
 
     private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
-
     private var profile: UserProfile? { profiles.first }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            // Base layer: white fills the whole screen (bottom + behind tab bar)
-            SomaColors.white
-                .ignoresSafeArea()
+        List {
+            // MARK: - Profile
+            Section {
+                NavigationLink {
+                    ProfileEditView()
+                } label: {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [SomaColors.navy, SomaColors.iris],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 54, height: 54)
+                                .shadow(color: SomaColors.iris.opacity(0.25), radius: 6, x: 0, y: 3)
 
-            // Top layer: navy only at the top — fills the top overscroll area
-            SomaColors.navy
-                .frame(height: 220)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .ignoresSafeArea(edges: .top)
+                            Text(profileInitials)
+                                .font(.system(size: 20, weight: .bold, design: .default))
+                                .foregroundStyle(.white)
+                        }
 
-            ScrollView {
-                VStack(spacing: 0) {
-                    // Navy header with illustration
-                    headerSection
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(profile?.name.isEmpty == false ? profile!.name : "User")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(Color(.label))
 
-                    VStack(spacing: 20) {
-                        profileCard
-                            .padding(.horizontal, 16)
-
-                        goalsSection
-                            .padding(.horizontal, 16)
-
-                        preferencesSection
-                            .padding(.horizontal, 16)
-
-                        aboutSection
-                            .padding(.horizontal, 16)
-
-                        versionLabel
-
-                        buyMeCoffeeButton
-                            .padding(.horizontal, 16)
-
-                        resetDataButton
-                            .padding(.horizontal, 16)
+                            Text("Personal Info & Body Stats")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+                        .padding(.vertical, 4)
                     }
-                    .padding(.top, 20)
-                    .padding(.bottom, 40)
-                    .frame(maxWidth: .infinity)
-                    .background(SomaColors.white)
-                    .clipShape(
-                        UnevenRoundedRectangle(
-                            topLeadingRadius: 24,
-                            bottomLeadingRadius: 0,
-                            bottomTrailingRadius: 0,
-                            topTrailingRadius: 24,
-                            style: .continuous
-                        )
-                    )
-                    .offset(y: -24)
                 }
             }
-            .scrollBounceBehavior(.basedOnSize)
-            .ignoresSafeArea(edges: .top)
+
+            // MARK: - Goals
+            Section {
+                goalRow(
+                    icon: "flame.fill",
+                    color: SomaColors.coral,
+                    title: "Calories",
+                    value: "\(profile?.dailyCalorieGoal ?? 2_000) kcal",
+                    goalType: .calories
+                )
+
+                goalRow(
+                    icon: "drop.fill",
+                    color: SomaColors.aqua,
+                    title: "Water",
+                    value: "\(Units.waterValue(ml: profile?.dailyWaterGoalML ?? 2_000, system: unitSystem)) \(Units.waterUnit(unitSystem))",
+                    goalType: .water
+                )
+
+                goalRow(
+                    icon: "leaf.fill",
+                    color: SomaColors.iris,
+                    title: "Protein",
+                    value: "\(profile?.dailyProteinGoalG ?? 120) g",
+                    goalType: .protein
+                )
+            } header: {
+                Text("DAILY GOALS")
+            } footer: {
+                Text("Goals determine your daily progress bars and target statistics.")
+            }
+
+            // MARK: - Logs & History
+            Section {
+                NavigationLink {
+                    HistoryView()
+                } label: {
+                    HStack(spacing: 12) {
+                        settingsBadge(icon: "clock.arrow.circlepath", color: SomaColors.streakOrange)
+
+                        Text("Log History")
+                            .foregroundStyle(Color(.label))
+                    }
+                }
+
+                Button {
+                    showExportSheet = true
+                } label: {
+                    HStack(spacing: 12) {
+                        settingsBadge(icon: "square.and.arrow.up", color: SomaColors.emerald)
+
+                        Text("Export Data (.csv)")
+                            .foregroundStyle(Color(.label))
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color(.tertiaryLabel))
+                    }
+                }
+            } header: {
+                Text("HISTORY & DATA")
+            }
+
+            // MARK: - Preferences
+            Section {
+                HStack(spacing: 12) {
+                    settingsBadge(icon: "bell.fill", color: Color(hex: "FF7A00"))
+
+                    Toggle("Daily Reminders", isOn: $notificationManager.isEnabled)
+                        .foregroundStyle(Color(.label))
+                }
+
+                Picker(selection: $unitSystemRaw) {
+                    ForEach(UnitSystem.allCases) { system in
+                        Text(system.title).tag(system.rawValue)
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        settingsBadge(icon: "ruler.fill", color: Color(hex: "007AFF"))
+
+                        Text("Units")
+                            .foregroundStyle(Color(.label))
+                    }
+                }
+                .pickerStyle(.menu)
+            } header: {
+                Text("PREFERENCES")
+            }
+
+            // MARK: - About & Feedback
+            Section {
+                Button {
+                    requestReview()
+                } label: {
+                    HStack(spacing: 12) {
+                        settingsBadge(icon: "star.fill", color: Color(hex: "FFCC00"))
+
+                        Text("Rate Soma")
+                            .foregroundStyle(Color(.label))
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color(.tertiaryLabel))
+                    }
+                }
+
+                Button {
+                    openURL("https://x.com/hypatox?s=21&t=-yUOJjsm0CIezkq3MgTq5Q")
+                } label: {
+                    HStack(spacing: 12) {
+                        settingsBadge(icon: "paperplane.fill", color: Color(hex: "5856D6"))
+
+                        Text("Contact & Feedback")
+                            .foregroundStyle(Color(.label))
+
+                        Spacer()
+
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color(.tertiaryLabel))
+                    }
+                }
+
+                Button {
+                    openURL("https://soma-tracker.app/privacy")
+                } label: {
+                    HStack(spacing: 12) {
+                        settingsBadge(icon: "lock.fill", color: Color(hex: "64748B"))
+
+                        Text("Privacy Policy")
+                            .foregroundStyle(Color(.label))
+
+                        Spacer()
+
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color(.tertiaryLabel))
+                    }
+                }
+            } header: {
+                Text("ABOUT & FEEDBACK")
+            }
+
+            // MARK: - Support Project
+            Section {
+                Button {
+                    openURL("https://buymeacoffee.com/zeyadhussein")
+                } label: {
+                    HStack(spacing: 10) {
+                        Text("\u{2615}")
+                            .font(.system(size: 18))
+
+                        Text("Buy Me a Coffee")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.black)
+
+                        Spacer()
+
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.black.opacity(0.6))
+                    }
+                    .padding(.vertical, 4)
+                }
+                .listRowBackground(SomaColors.buyMeCoffeeYellow)
+            } header: {
+                Text("SUPPORT")
+            }
+
+            // MARK: - Danger Zone
+            Section {
+                Button(role: .destructive) {
+                    showResetConfirmation = true
+                } label: {
+                    HStack(spacing: 12) {
+                        settingsBadge(icon: "trash.fill", color: .red)
+
+                        Text("Reset All Data")
+                            .foregroundStyle(.red)
+                    }
+                }
+                .confirmationDialog(
+                    "Reset All Data?",
+                    isPresented: $showResetConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button("Reset All Data", role: .destructive) {
+                        resetAllData()
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This will permanently delete all your logs, entries, and profile data. You will be returned to the initial setup screen.")
+                }
+            } header: {
+                Text("ACCOUNT")
+            }
+
+            // MARK: - Version & Credits
+            Section {
+                VStack(spacing: 4) {
+                    Text("Soma 1.0.0")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color(.secondaryLabel))
+
+                    Text("Track what matters.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color(.tertiaryLabel))
+                }
+                .frame(maxWidth: .infinity)
+                .listRowBackground(Color.clear)
+            }
         }
-        .alert("Edit \(editingGoal?.title ?? "")", isPresented: .init(
+        .listStyle(.insetGrouped)
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.large)
+        .alert("Edit \(editingGoal?.title ?? "") Goal", isPresented: .init(
             get: { editingGoal != nil },
             set: { if !$0 { editingGoal = nil } }
         )) {
@@ -85,116 +285,20 @@ struct SettingsView: View {
             Button("Save") { saveGoal() }
             Button("Cancel", role: .cancel) { editingGoal = nil }
         } message: {
-            Text("Enter your daily \(editingGoal?.title.lowercased() ?? "") goal in \(editingGoalUnit)")
+            Text("Enter your daily \(editingGoal?.title.lowercased() ?? "") goal in \(editingGoalUnit).")
         }
-        .alert("Reset All Data", isPresented: $showResetConfirmation) {
-            Button("Reset", role: .destructive) { resetAllData() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This will delete all your logs, entries, and profile data. This action cannot be undone.")
-        }
-        .confirmationDialog("Units", isPresented: $showUnitPicker, titleVisibility: .visible) {
-            ForEach(UnitSystem.allCases) { system in
-                Button(system.title) { unitSystemRaw = system.rawValue }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Choose how measurements are displayed.")
+        .sheet(isPresented: $showExportSheet) {
+            ExportDatePickerSheet(logs: logs)
+                .preferredColorScheme(.light)
+                .presentationDetents([.medium, .large])
         }
     }
 
-    // MARK: - Header
-
-    private var headerSection: some View {
-        ZStack(alignment: .topLeading) {
-            SomaColors.navy
-                .frame(height: 184)
-
-            Image("splash-illustration")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 180)
-                .opacity(0.35)
-                .padding(.top, 20)
-                .padding(.leading, -20)
-        }
-        .clipped()
-    }
-
-    // MARK: - Profile Card
-
-    private var profileCard: some View {
-        NavigationLink {
-            ProfileEditView()
-        } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: 44))
-                    .foregroundStyle(Color(.systemGray4), Color(.systemGray6))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(profile?.name ?? "User")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(Color(.label))
-
-                    Text("Edit Profile")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color(.secondaryLabel))
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color(.tertiaryLabel))
-            }
-            .padding(16)
-            .background(Color(.systemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 2)
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Goals Section
-
-    private var goalsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("GOALS")
-
-            VStack(spacing: 0) {
-                goalRow(
-                    icon: "flame.fill",
-                    title: "Daily Calories",
-                    value: "\(profile?.dailyCalorieGoal ?? 2_000) kcal",
-                    goalType: .calories
-                )
-
-                Divider().padding(.leading, 56)
-
-                goalRow(
-                    icon: "drop.fill",
-                    title: "Daily Water",
-                    value: "\(Units.waterValue(ml: profile?.dailyWaterGoalML ?? 2_000, system: unitSystem)) \(Units.waterUnit(unitSystem))",
-                    goalType: .water
-                )
-
-                Divider().padding(.leading, 56)
-
-                goalRow(
-                    icon: "fish.fill",
-                    title: "Daily Protein",
-                    value: "\(profile?.dailyProteinGoalG ?? 120) g",
-                    goalType: .protein
-                )
-            }
-            .background(Color(.systemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-    }
+    // MARK: - Row Helpers
 
     private func goalRow(
         icon: String,
+        color: Color = SomaColors.navy,
         title: String,
         value: String,
         goalType: GoalType
@@ -202,21 +306,18 @@ struct SettingsView: View {
         Button {
             editingGoal = goalType
             switch goalType {
-            case .calories: goalDraftValue = "\(profile?.dailyCalorieGoal ?? 2_000)"
-            case .water: goalDraftValue = "\(Units.waterValue(ml: profile?.dailyWaterGoalML ?? 2_000, system: unitSystem))"
-            case .protein: goalDraftValue = "\(profile?.dailyProteinGoalG ?? 120)"
+            case .calories:
+                goalDraftValue = "\(profile?.dailyCalorieGoal ?? 2_000)"
+            case .water:
+                goalDraftValue = "\(Units.waterValue(ml: profile?.dailyWaterGoalML ?? 2_000, system: unitSystem))"
+            case .protein:
+                goalDraftValue = "\(profile?.dailyProteinGoalG ?? 120)"
             }
         } label: {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(SomaColors.navy)
-                    .frame(width: 32, height: 32)
-                    .background(SomaColors.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            HStack(spacing: 12) {
+                settingsBadge(icon: icon, color: color)
 
                 Text(title)
-                    .font(.system(size: 16))
                     .foregroundStyle(Color(.label))
 
                 Spacer()
@@ -229,185 +330,19 @@ struct SettingsView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color(.tertiaryLabel))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 13)
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Preferences Section
-
-    private var preferencesSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("PREFERENCES")
-
-            VStack(spacing: 0) {
-                HStack(spacing: 14) {
-                    Image(systemName: "bell.fill")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(SomaColors.navy)
-                        .frame(width: 32, height: 32)
-                        .background(SomaColors.white)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                    Text("Notifications")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Color(.label))
-
-                    Spacer()
-
-                    Toggle("", isOn: $notificationManager.isEnabled)
-                        .labelsHidden()
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 11)
-
-                Divider().padding(.leading, 56)
-
-                Button {
-                    showUnitPicker = true
-                } label: {
-                    HStack(spacing: 14) {
-                        Image(systemName: "ruler.fill")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(SomaColors.navy)
-                            .frame(width: 32, height: 32)
-                            .background(SomaColors.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                        Text("Units")
-                            .font(.system(size: 16))
-                            .foregroundStyle(Color(.label))
-
-                        Spacer()
-
-                        Text(unitSystem.title)
-                            .font(.system(size: 15))
-                            .foregroundStyle(Color(.secondaryLabel))
-
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(Color(.tertiaryLabel))
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 13)
-                }
-                .buttonStyle(.plain)
-            }
-            .background(Color(.systemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
     }
 
-    // MARK: - About Section
+    private func settingsBadge(icon: String, color: Color = SomaColors.navy) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(color)
+                .frame(width: 30, height: 30)
 
-    private var aboutSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("ABOUT")
-
-            VStack(spacing: 0) {
-                aboutRow(icon: "star.fill", iconColor: .yellow, title: "Rate the App") {
-                    requestReview()
-                }
-
-                Divider().padding(.leading, 56)
-
-                aboutRow(icon: "lock.fill", title: "Privacy Policy") {
-                    openURL("https://soma-tracker.app/privacy")
-                }
-
-                Divider().padding(.leading, 56)
-
-                aboutRow(icon: "message.fill", title: "Contact Me") {
-                    openURL("https://x.com/hypatox?s=21&t=-yUOJjsm0CIezkq3MgTq5Q")
-                }
-            }
-            .background(Color(.systemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
         }
-    }
-
-    private func aboutRow(
-        icon: String,
-        iconColor: Color = SomaColors.navy,
-        title: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(iconColor)
-                    .frame(width: 32, height: 32)
-                    .background(SomaColors.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                Text(title)
-                    .font(.system(size: 16))
-                    .foregroundStyle(Color(.label))
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color(.tertiaryLabel))
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 13)
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Footer
-
-    private var versionLabel: some View {
-        Text("Version 1.0.0")
-            .font(.system(size: 13))
-            .foregroundStyle(Color(.tertiaryLabel))
-            .frame(maxWidth: .infinity)
-            .padding(.top, 4)
-    }
-
-    private var buyMeCoffeeButton: some View {
-        Button {
-            openURL("https://buymeacoffee.com/zeyadhussein")
-        } label: {
-            HStack(spacing: 8) {
-                Text("\u{2615}")
-                    .font(.system(size: 18))
-
-                Text("Buy Me a Coffee")
-                    .font(.system(size: 16, weight: .bold))
-            }
-            .foregroundStyle(.black)
-            .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .background(SomaColors.buyMeCoffeeYellow)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var resetDataButton: some View {
-        Button {
-            showResetConfirmation = true
-        } label: {
-            Text("Reset All Data")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.red)
-                .frame(maxWidth: .infinity)
-                .frame(height: 52)
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Helpers
-
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(Color(.secondaryLabel))
-            .padding(.leading, 4)
     }
 
     private var profileInitials: String {
@@ -434,9 +369,12 @@ struct SettingsView: View {
         }
 
         switch goal {
-        case .calories: profile.dailyCalorieGoal = value
-        case .water: profile.dailyWaterGoalML = Units.waterToML(value, system: unitSystem)
-        case .protein: profile.dailyProteinGoalG = value
+        case .calories:
+            profile.dailyCalorieGoal = value
+        case .water:
+            profile.dailyWaterGoalML = Units.waterToML(value, system: unitSystem)
+        case .protein:
+            profile.dailyProteinGoalG = value
         }
 
         try? modelContext.save()
@@ -492,17 +430,9 @@ private enum GoalType {
         case .protein: "Protein"
         }
     }
-
-    var unit: String {
-        switch self {
-        case .calories: "kcal"
-        case .water: "ml"
-        case .protein: "g"
-        }
-    }
 }
 
-// MARK: - Profile Edit
+// MARK: - Profile Edit View
 
 struct ProfileEditView: View {
     @Environment(\.modelContext) private var modelContext
@@ -511,25 +441,70 @@ struct ProfileEditView: View {
 
     @State private var name = ""
     @State private var age = ""
+    @State private var gender = "Male"
+    @State private var activityLevel = "Moderate"
     @State private var weight = ""
     @State private var height = ""
 
     private var profile: UserProfile? { profiles.first }
     private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
 
+    private let genderOptions = ["Male", "Female", "Other"]
+    private let activityLevelOptions = ["Sedentary", "Light", "Moderate", "Active", "VeryActive"]
+
     var body: some View {
         Form {
             Section("Personal Info") {
-                TextField("Name", text: $name)
-                TextField("Age", text: $age)
-                    .keyboardType(.numberPad)
+                HStack {
+                    Text("Name")
+                        .frame(width: 80, alignment: .leading)
+                    TextField("Full Name", text: $name)
+                        .multilineTextAlignment(.trailing)
+                }
+
+                HStack {
+                    Text("Age")
+                        .frame(width: 80, alignment: .leading)
+                    TextField("Age", text: $age)
+                        .keyboardType(.numberPad)
+                        .multilineTextAlignment(.trailing)
+                }
+
+                Picker("Gender", selection: $gender) {
+                    ForEach(genderOptions, id: \.self) { option in
+                        Text(option).tag(option)
+                    }
+                }
             }
 
             Section("Body Stats") {
-                TextField("Weight (\(Units.weightUnit(unitSystem)))", text: $weight)
-                    .keyboardType(.decimalPad)
-                TextField("Height (\(Units.heightUnit(unitSystem)))", text: $height)
-                    .keyboardType(.decimalPad)
+                HStack {
+                    Text("Weight")
+                    Spacer()
+                    TextField("0", text: $weight)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(maxWidth: 80)
+                    Text(Units.weightUnit(unitSystem))
+                        .foregroundStyle(Color(.secondaryLabel))
+                }
+
+                HStack {
+                    Text("Height")
+                    Spacer()
+                    TextField("0", text: $height)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(maxWidth: 80)
+                    Text(Units.heightUnit(unitSystem))
+                        .foregroundStyle(Color(.secondaryLabel))
+                }
+
+                Picker("Activity Level", selection: $activityLevel) {
+                    ForEach(activityLevelOptions, id: \.self) { level in
+                        Text(formatActivityLevel(level)).tag(level)
+                    }
+                }
             }
         }
         .navigationTitle("Edit Profile")
@@ -538,16 +513,31 @@ struct ProfileEditView: View {
             guard let profile else { return }
             name = profile.name
             age = "\(profile.age)"
+            gender = profile.gender.isEmpty ? "Male" : profile.gender
+            activityLevel = profile.activityLevel.isEmpty ? "Moderate" : profile.activityLevel
             weight = String(format: "%.1f", Units.weightValue(kg: profile.weightKG, system: unitSystem))
             height = String(format: "%.1f", Units.heightValue(cm: profile.heightCM, system: unitSystem))
         }
         .onDisappear {
             guard let profile else { return }
-            profile.name = name
-            profile.age = Int(age) ?? profile.age
+            profile.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let a = Int(age) { profile.age = a }
+            profile.gender = gender
+            profile.activityLevel = activityLevel
             if let w = Double(weight) { profile.weightKG = Units.weightToKG(w, system: unitSystem) }
             if let h = Double(height) { profile.heightCM = Units.heightToCM(h, system: unitSystem) }
             try? modelContext.save()
+        }
+    }
+
+    private func formatActivityLevel(_ level: String) -> String {
+        switch level {
+        case "Sedentary": return "Sedentary"
+        case "Light": return "Lightly Active"
+        case "Moderate": return "Moderately Active"
+        case "Active": return "Active"
+        case "VeryActive": return "Very Active"
+        default: return level
         }
     }
 }
@@ -559,3 +549,4 @@ struct ProfileEditView: View {
     .modelContainer(PreviewData.container)
     .environment(AppRouter())
 }
+

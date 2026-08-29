@@ -8,6 +8,7 @@ import Observation
 
 enum Tab: Hashable {
     case home
+    case ai
     case settings
 }
 

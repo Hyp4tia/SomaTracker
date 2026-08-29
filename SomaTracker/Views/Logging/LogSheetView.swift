@@ -233,7 +233,7 @@ struct LogSheetView: View {
                 name: label.isEmpty ? "Food" : label,
                 calories: numericValue,
                 proteinG: 0,
-                mealType: "Snack"
+                mealType: ""
             )
             log.foodEntries.append(entry)
 
@@ -246,7 +246,7 @@ struct LogSheetView: View {
                 name: label.isEmpty ? "Protein" : label,
                 calories: 0,
                 proteinG: Double(numericValue),
-                mealType: "Snack"
+                mealType: ""
             )
             log.foodEntries.append(entry)
         }

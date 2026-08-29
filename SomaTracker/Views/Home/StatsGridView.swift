@@ -53,6 +53,8 @@ private struct StatGridCell: View {
                 Text(value)
                     .font(.system(size: 30 * scale, weight: .bold, design: .default))
                     .foregroundStyle(Color(.label))
+                    .contentTransition(.numericText())
+                    .animation(.snappy(duration: 0.35, extraBounce: 0.05), value: value)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
 
@@ -66,6 +68,7 @@ private struct StatGridCell: View {
             Text(label)
                 .font(SomaTypography.body)
                 .foregroundStyle(Color(.secondaryLabel))
+                .animation(.snappy(duration: 0.3), value: label)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

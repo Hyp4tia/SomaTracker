@@ -23,35 +23,22 @@ struct ContentView: View {
     // MARK: - Main tab view
 
     private var mainTabView: some View {
-        ZStack(alignment: .bottomTrailing) {
-            TabView(selection: $tabRouter.selectedTab) {
-                HomeView(healthKitManager: healthKitManager)
-                    .tabItem { Label("Home", systemImage: "house") }
-                    .tag(Tab.home)
+        TabView(selection: $tabRouter.selectedTab) {
+            HomeView(healthKitManager: healthKitManager)
+                .tabItem { Label("Home", systemImage: "house") }
+                .tag(Tab.home)
 
-                NavigationStack {
-                        SettingsView()
-                    }
-                    .tabItem { Label("Settings", systemImage: "gearshape") }
-                    .tag(Tab.settings)
+            NavigationStack {
+                AIView()
             }
+            .tabItem { Label("AI", systemImage: "sparkles") }
+            .tag(Tab.ai)
 
-            ZStack {
-                Color.clear
-                    .frame(width: 56, height: 56)
-                    .glassEffect(.regular, in: .circle)
-
-                Image(systemName: "plus")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.primary)
+            NavigationStack {
+                SettingsView()
             }
-            .frame(width: 56, height: 56)
-            .contentShape(Circle())
-            .onTapGesture {
-                appRouter.showLogSheet = true
-            }
-            .padding(.trailing, 20)
-            .padding(.bottom, 68)
+            .tabItem { Label("Settings", systemImage: "gearshape") }
+            .tag(Tab.settings)
         }
         .sheet(isPresented: $appRouter.showLogSheet) {
             LogSheetView()

@@ -8,7 +8,7 @@ struct SplashView: View {
         NavigationStack {
             GeometryReader { geo in
                 let totalHeight = geo.size.height
-                let cardHeight = totalHeight * 0.55  // ← was 0.47
+                let cardHeight = totalHeight * 0.55
 
                 ZStack(alignment: .bottom) {
                     SomaColors.navy
@@ -42,7 +42,10 @@ struct SplashView: View {
                     }
 
                     VStack(spacing: 0) {
-                        Spacer().frame(height: 48)
+                        SplashAnimationView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .padding(.top, 24)
+                            .padding(.bottom, 12)
 
                         NavigationLink {
                             NameInputView(draft: $draft)
@@ -56,11 +59,7 @@ struct SplashView: View {
                                 .clipShape(Capsule())
                         }
                         .padding(.horizontal, 28)
-
-                        SplashAnimationView()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .padding(.top, 8)
-                            .padding(.bottom, geo.safeAreaInsets.bottom)
+                        .padding(.bottom, max(geo.safeAreaInsets.bottom, 24))
                     }
                     .clipped()
                     .frame(maxWidth: .infinity)
@@ -81,6 +80,7 @@ struct SplashView: View {
             }
             .navigationBarBackButtonHidden()
         }
+        .background(SomaColors.navy.ignoresSafeArea())
     }
 }
 

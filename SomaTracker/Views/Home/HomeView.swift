@@ -3,6 +3,7 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(AppRouter.self) private var appRouter
     @Query(sort: \DailyLog.date) private var logs: [DailyLog]
     @Query private var profiles: [UserProfile]
 
@@ -13,7 +14,9 @@ struct HomeView: View {
 
     @State private var selectedMode: SomaSegmentedToggleOption = .remaining
     @State private var didPrepareToday = false
-    @State private var showWaterDetail = false
+    @State private var showHistorySheet = false
+    @State private var dragOffset: CGFloat = 0
+    @State private var isDraggingSheet = false
 
     private var profile: UserProfile? {
         profiles.first
@@ -133,8 +136,8 @@ struct HomeView: View {
                         .padding(.top, 48)
 
                     WeeklyBarChart(logs: logs)
-                        .padding(.top, 44)
-                        .padding(.horizontal, 6)
+                        .padding(.top, 36)
+                        .padding(.horizontal, 16)
 
                     Spacer(minLength: panelHeight - 16)
                 }
@@ -142,9 +145,11 @@ struct HomeView: View {
                 statsPanel(scale: contentScale, bottomClearance: bottomClearance)
                     .frame(height: panelHeight, alignment: .top)
             }
-            .sheet(isPresented: $showWaterDetail) {
-                WaterLogSheetView()
-                    .preferredColorScheme(.light)
+            .sheet(isPresented: $showHistorySheet) {
+                NavigationStack {
+                    HistoryView()
+                }
+                .preferredColorScheme(.light)
             }
             .task {
                 guard !didPrepareToday else { return }
@@ -180,6 +185,8 @@ struct HomeView: View {
                     Text(steps.number.formatted())
                         .font(.system(size: 22, weight: .bold, design: .default))
                         .foregroundStyle(SomaColors.white)
+                        .contentTransition(.numericText())
+                        .animation(.snappy(duration: 0.35), value: steps.number)
                 }
 
                 Text(steps.label)
@@ -202,6 +209,8 @@ struct HomeView: View {
                     Text(trend.text)
                         .font(.system(size: 22, weight: .bold, design: .default))
                         .foregroundStyle(trendColor)
+                        .contentTransition(.numericText())
+                        .animation(.snappy(duration: 0.35), value: trend.text)
                 }
 
                 Text(!trend.hasData
@@ -213,45 +222,72 @@ struct HomeView: View {
 
             Spacer(minLength: 8)
 
-            // Water intake button — Liquid Glass circle
-            ZStack {
-                Color.clear
-                    .frame(width: 56, height: 56)
-                    .glassEffect(.regular, in: .circle)
+            // Native Liquid Glass History Button
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showHistorySheet = true
+            } label: {
+                ZStack {
+                    Color.clear
+                        .frame(width: 56, height: 56)
+                        .glassEffect(.regular, in: .circle)
 
-                Image(systemName: "waterbottle.fill")
-                    .font(.system(size: 23, weight: .bold, design: .default))
-                    .foregroundStyle(SomaColors.white)
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 22, weight: .bold, design: .default))
+                        .foregroundStyle(SomaColors.white)
+                }
+                .frame(width: 56, height: 56)
+                .contentShape(Circle())
             }
-            .frame(width: 56, height: 56)
-            .contentShape(Circle())
-            .onTapGesture {
-                showWaterDetail = true
-            }
-            .accessibilityLabel("Water intake")
+            .buttonStyle(LiquidGlassButtonStyle())
+            .accessibilityLabel("Log History")
         }
+    }
+
+    private var visualPullOffset: CGFloat {
+        if dragOffset < 0 {
+            // Smooth rubber-band spring dampening up to -65pt
+            return min(0, max(-65, dragOffset * 0.45))
+        }
+        return 0
     }
 
     private func statsPanel(scale: CGFloat, bottomClearance: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Interactive grabber handle
+            Capsule()
+                .fill(isDraggingSheet ? SomaColors.navy.opacity(0.5) : Color(.systemGray4))
+                .frame(width: isDraggingSheet ? 48 : 36, height: 5)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 8 * scale)
+                .animation(.interactiveSpring(response: 0.25, dampingFraction: 0.8), value: isDraggingSheet)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    appRouter.showLogSheet = true
+                }
+
             Image(systemName: "flame.fill")
                 .font(.system(size: 19 * scale, weight: .bold, design: .default))
                 .foregroundStyle(SomaColors.white)
                 .frame(width: 40 * scale, height: 40 * scale)
                 .background(Color.orange)
                 .clipShape(RoundedRectangle(cornerRadius: 11 * scale, style: .continuous))
-                .padding(.top, 24 * scale)
+                .padding(.top, 14 * scale)
 
             Text(displayedCalories.formatted())
                 .font(.system(size: 78 * scale, weight: .black, design: .default))
                 .foregroundStyle(Color(.label))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .contentTransition(.numericText())
+                .animation(.snappy(duration: 0.35, extraBounce: 0.05), value: displayedCalories)
                 .padding(.top, 12 * scale)
 
             Text(heroSubtitle)
                 .font(.system(size: 15, weight: .bold, design: .default))
                 .foregroundStyle(Color(.secondaryLabel))
+                .animation(.snappy(duration: 0.3), value: heroSubtitle)
 
             SomaSegmentedToggle(selection: $selectedMode)
                 .padding(.top, 18 * scale)
@@ -273,8 +309,20 @@ struct HomeView: View {
         .padding(.top, 4)
         .padding(.bottom, bottomClearance)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(SomaColors.white)
-        .clipShape(
+        .background(
+            UnevenRoundedRectangle(
+                topLeadingRadius: 24,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: 24,
+                style: .continuous
+            )
+            .fill(SomaColors.white)
+            .padding(.bottom, -250)
+        )
+        .offset(y: visualPullOffset)
+        .animation(.interactiveSpring(response: 0.28, dampingFraction: 0.85), value: visualPullOffset)
+        .contentShape(
             UnevenRoundedRectangle(
                 topLeadingRadius: 24,
                 bottomLeadingRadius: 0,
@@ -283,9 +331,38 @@ struct HomeView: View {
                 style: .continuous
             )
         )
+        .gesture(
+            DragGesture(minimumDistance: 10, coordinateSpace: .local)
+                .onChanged { value in
+                    if value.translation.height < 0 {
+                        isDraggingSheet = true
+                        dragOffset = value.translation.height
+                    }
+                }
+                .onEnded { value in
+                    let shouldOpen = value.translation.height < -25 || value.predictedEndTranslation.height < -40
+                    if shouldOpen {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        appRouter.showLogSheet = true
+                    }
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                        dragOffset = 0
+                        isDraggingSheet = false
+                    }
+                }
+        )
         .ignoresSafeArea(edges: .bottom)
     }
 
+}
+
+private struct LiquidGlassButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.90 : 1.0)
+            .opacity(configuration.isPressed ? 0.82 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
 }
 
 #Preview {

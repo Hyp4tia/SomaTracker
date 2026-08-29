@@ -2,6 +2,7 @@ import SwiftData
 import SwiftUI
 
 struct GoalsInputView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(AppRouter.self) private var appRouter
     @Environment(\.modelContext) private var modelContext
     @Query private var profiles: [UserProfile]
@@ -16,36 +17,41 @@ struct GoalsInputView: View {
                 .onTapGesture { dismissKeyboard() }
 
             VStack(spacing: 0) {
-                OnboardingProgressDots(step: 3)
-                    .padding(.top, 116)
+                OnboardingTopBar(step: 3) {
+                    dismiss()
+                }
+                .padding(.top, 56)
+
+                Spacer(minLength: 12)
 
                 OnboardingIcon(systemName: "target")
-                    .padding(.top, 40)
 
                 Text("Set your goals")
                     .font(.system(size: 32, weight: .bold, design: .default))
                     .foregroundStyle(SomaColors.white)
                     .multilineTextAlignment(.center)
-                    .padding(.top, 32)
+                    .padding(.top, 24)
 
-                Text("You can always change these later in\nSettings.")
+                Text("You can always change these later in Settings.")
                     .font(SomaTypography.body)
-                    .foregroundStyle(SomaColors.white.opacity(0.62))
+                    .foregroundStyle(SomaColors.white.opacity(0.65))
                     .multilineTextAlignment(.center)
-                    .lineSpacing(5)
-                    .padding(.top, 8)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 12)
+                    .padding(.horizontal, 16)
 
-                VStack(spacing: 20) {
+                VStack(spacing: 16) {
                     OnboardingField(title: "Daily Calories (kcal)", text: $draft.dailyCalorieGoal, keyboardType: .numberPad)
                     OnboardingField(title: "Daily Water (ml)", text: $draft.dailyWaterGoalML, keyboardType: .numberPad)
                     OnboardingField(title: "Daily Protein (g)", text: $draft.dailyProteinGoalG, keyboardType: .numberPad)
                 }
-                .padding(.top, 40)
+                .padding(.top, 28)
 
-                Spacer()
+                Spacer(minLength: 24)
 
                 Button(action: saveProfile) {
-                    OnboardingContinueLabel(title: "Continue ->")
+                    OnboardingContinueLabel()
                 }
                 .buttonStyle(.plain)
 
@@ -55,13 +61,16 @@ struct GoalsInputView: View {
                         .foregroundStyle(SomaColors.white.opacity(0.48))
                 }
                 .buttonStyle(.plain)
-                .padding(.top, 28)
-                .padding(.bottom, 42)
+                .padding(.top, 20)
+                .padding(.bottom, 36)
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 28)
         }
         .dismissKeyboardOnInteraction()
         .navigationBarBackButtonHidden()
+        .toolbarBackground(SomaColors.navy, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .background(SomaColors.navy.ignoresSafeArea())
     }
 
     private func saveProfile() {

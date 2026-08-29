@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct BodyStatsView: View {
+    @Environment(\.dismiss) private var dismiss
     @Binding var draft: OnboardingDraft
 
     private let columns = [
@@ -16,49 +17,57 @@ struct BodyStatsView: View {
                 .onTapGesture { dismissKeyboard() }
 
             VStack(spacing: 0) {
-                OnboardingProgressDots(step: 2)
-                    .padding(.top, 116)
+                OnboardingTopBar(step: 2) {
+                    dismiss()
+                }
+                .padding(.top, 56)
 
-                OnboardingIcon(systemName: "arrow.up.right")
-                    .padding(.top, 40)
+                Spacer(minLength: 12)
+
+                OnboardingIcon(systemName: "figure.arms.open")
 
                 Text("Your body stats")
                     .font(.system(size: 32, weight: .bold, design: .default))
                     .foregroundStyle(SomaColors.white)
                     .multilineTextAlignment(.center)
-                    .padding(.top, 32)
+                    .padding(.top, 24)
 
-                Text("Used to calculate your daily calorie and\nprotein targets.")
+                Text("Used to calculate your daily calorie and protein targets.")
                     .font(SomaTypography.body)
-                    .foregroundStyle(SomaColors.white.opacity(0.62))
+                    .foregroundStyle(SomaColors.white.opacity(0.65))
                     .multilineTextAlignment(.center)
-                    .lineSpacing(5)
-                    .padding(.top, 20)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 12)
+                    .padding(.horizontal, 16)
 
-                LazyVGrid(columns: columns, spacing: 18) {
+                LazyVGrid(columns: columns, spacing: 16) {
                     OnboardingField(title: "Age", text: $draft.age, keyboardType: .numberPad)
                     OnboardingPickerField(title: "Gender", selection: $draft.gender)
                     OnboardingField(title: "Weight (kg)", text: $draft.weightKG, keyboardType: .decimalPad)
                     OnboardingField(title: "Height (cm)", text: $draft.heightCM, keyboardType: .decimalPad)
                 }
-                .padding(.top, 108)
+                .padding(.top, 32)
 
-                Spacer()
+                Spacer(minLength: 24)
 
                 NavigationLink {
                     GoalsInputView(draft: $draft)
                 } label: {
-                    OnboardingContinueLabel(title: "Continue ->")
+                    OnboardingContinueLabel()
                 }
 
                 OnboardingSkipLink(destination: GoalsInputView(draft: $draft))
-                    .padding(.top, 28)
-                    .padding(.bottom, 42)
+                    .padding(.top, 20)
+                    .padding(.bottom, 36)
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 28)
         }
         .dismissKeyboardOnInteraction()
         .navigationBarBackButtonHidden()
+        .toolbarBackground(SomaColors.navy, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .background(SomaColors.navy.ignoresSafeArea())
     }
 }
 
