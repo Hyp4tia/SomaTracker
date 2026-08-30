@@ -20,15 +20,15 @@ enum LogCategory: String, CaseIterable, Identifiable {
         switch self {
         case .calories: "flame.fill"
         case .water: "drop.fill"
-        case .protein: "fish.fill"
+        case .protein: "figure.strengthtraining.traditional"
         }
     }
 
     var accentColor: Color {
         switch self {
-        case .calories: .orange
-        case .water: .blue
-        case .protein: .purple
+        case .calories: Color.orange
+        case .water: Color.blue
+        case .protein: Color.purple
         }
     }
 }
@@ -40,6 +40,7 @@ struct LogSheetView: View {
     @State private var selectedCategory: LogCategory = .calories
     @State private var displayValue = "0"
     @State private var descriptionText = ""
+    @FocusState private var isDescriptionFocused: Bool
 
     private var numericValue: Int {
         Int(displayValue) ?? 0
@@ -52,54 +53,73 @@ struct LogSheetView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Display area
+                // Hero Display Section
                 displaySection
-                    .padding(.top, 24)
-
-                // Description field
-                TextField("Description (optional)", text: $descriptionText)
-                    .font(.system(size: 15))
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 40)
-                    .padding(.top, 6)
+                    .padding(.top, 14)
 
                 Spacer(minLength: 16)
 
-                // Category chips
+                // Category Chips
                 categoryChips
-                    .padding(.bottom, 14)
+                    .padding(.bottom, 12)
 
-                // Number pad
+                // Custom Keypad
                 numberPad
                     .padding(.horizontal, 20)
 
-                // Save button
+                // Primary Save Button
                 Button {
                     save()
                 } label: {
                     Text("Save")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(SomaColors.white)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(canSave ? Color.white : Color(.tertiaryLabel))
                         .frame(maxWidth: .infinity)
                         .frame(height: 54)
-                        .background(canSave ? SomaColors.navy : SomaColors.navy.opacity(0.35))
-                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .background(canSave ? selectedCategory.accentColor : Color(.tertiarySystemFill))
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
                 .disabled(!canSave)
                 .padding(.horizontal, 20)
-                .padding(.top, 16)
+                .padding(.top, 14)
                 .padding(.bottom, 8)
             }
             .navigationTitle("Log Entry")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dismiss()
+                    } label: {
+                        ZStack {
+                            Color.clear
+                                .frame(width: 32, height: 32)
+                                .glassEffect(.regular, in: .circle)
+
+                            Image(systemName: "xmark")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(SomaColors.navy)
+                        }
+                        .frame(width: 32, height: 32)
+                        .contentShape(Circle())
+                    }
+                    .buttonStyle(LiquidGlassButtonStyle())
+                    .accessibilityLabel("Close")
+                }
+
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        isDescriptionFocused = false
+                    }
+                    .fontWeight(.semibold)
                 }
             }
         }
-        .presentationDetents([.large])
+        .presentationDetents([.fraction(0.78), .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Color(.systemBackground))
     }
 
     // MARK: - Category Chips
@@ -110,6 +130,7 @@ struct LogSheetView: View {
                 let isSelected = selectedCategory == cat
 
                 Button {
+                    UISelectionFeedbackGenerator().selectionChanged()
                     withAnimation(.snappy(duration: 0.2)) {
                         selectedCategory = cat
                         displayValue = "0"
@@ -118,15 +139,15 @@ struct LogSheetView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: cat.icon)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
 
                         Text(cat.rawValue)
                             .font(.system(size: 14, weight: .semibold))
                     }
-                    .foregroundStyle(isSelected ? .white : Color(.label))
+                    .foregroundStyle(isSelected ? Color.white : Color(.label).opacity(0.85))
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(isSelected ? cat.accentColor : Color(.tertiarySystemFill))
+                    .padding(.vertical, 9)
+                    .background(isSelected ? cat.accentColor : Color(.secondarySystemFill))
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -134,37 +155,48 @@ struct LogSheetView: View {
         }
     }
 
-    // MARK: - Display
+    // MARK: - Hero Display
 
     private var displaySection: some View {
         VStack(spacing: 4) {
-            Image(systemName: selectedCategory.icon)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(selectedCategory.accentColor)
-                .padding(.bottom, 8)
-
+            // Numeric Hero Value & Trailing Unit Lockup
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(displayValue)
                     .font(.system(size: 64, weight: .bold, design: .rounded))
+                    .monospacedDigit()
                     .foregroundStyle(Color(.label))
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
 
                 Text(selectedCategory.unit)
-                    .font(.system(size: 22, weight: .medium, design: .rounded))
-                    .foregroundStyle(.secondary)
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(Color(.secondaryLabel))
             }
             .contentTransition(.numericText())
             .animation(.snappy(duration: 0.15), value: displayValue)
+
+            // Transparent Centered Description Field
+            TextField(
+                "",
+                text: $descriptionText,
+                prompt: Text("Description (optional)").foregroundStyle(Color(.tertiaryLabel))
+            )
+            .font(.subheadline)
+            .foregroundStyle(Color(.label))
+            .multilineTextAlignment(.center)
+            .tint(.primary)
+            .focused($isDescriptionFocused)
+            .padding(.top, 6)
+            .padding(.horizontal, 32)
         }
     }
 
-    // MARK: - Number Pad
+    // MARK: - Keypad Grid (4x3 Structure)
 
     private var numberPad: some View {
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 3)
 
-        return LazyVGrid(columns: columns, spacing: 12) {
+        return LazyVGrid(columns: columns, spacing: 10) {
             ForEach(1...9, id: \.self) { digit in
                 numberButton("\(digit)")
             }
@@ -176,14 +208,16 @@ struct LogSheetView: View {
 
     private func numberButton(_ label: String) -> some View {
         Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             appendDigit(label)
         } label: {
             Text(label)
-                .font(.system(size: 24, weight: .medium, design: .rounded))
+                .font(.title2.weight(.medium))
+                .monospacedDigit()
                 .foregroundStyle(Color(.label))
                 .frame(maxWidth: .infinity)
-                .frame(height: 56)
-                .background(Color(.tertiarySystemFill))
+                .frame(height: 54)
+                .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -191,17 +225,27 @@ struct LogSheetView: View {
 
     private var deleteButton: some View {
         Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             deleteLastDigit()
         } label: {
-            Image(systemName: "delete.backward")
-                .font(.system(size: 22, weight: .medium))
-                .foregroundStyle(Color(.label))
+            Image(systemName: "delete.left.fill")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(Color(.secondaryLabel))
                 .frame(maxWidth: .infinity)
-                .frame(height: 56)
-                .background(Color(.tertiarySystemFill))
+                .frame(height: 54)
+                .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.5)
+                .onEnded { _ in
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    withAnimation(.snappy) {
+                        displayValue = "0"
+                    }
+                }
+        )
     }
 
     // MARK: - Input Logic
@@ -233,25 +277,36 @@ struct LogSheetView: View {
                 name: label.isEmpty ? "Food" : label,
                 calories: numericValue,
                 proteinG: 0,
+                carbsG: 0,
+                fatG: 0,
                 mealType: ""
             )
             log.foodEntries.append(entry)
 
         case .water:
-            let entry = WaterEntry(amount: numericValue)
+            let entry = WaterEntry(
+                amount: numericValue,
+                timestamp: .now,
+                label: label.isEmpty ? nil : label
+            )
             log.waterEntries.append(entry)
 
         case .protein:
+            let proteinValue = Double(numericValue)
+            let calculatedKcal = Int(round(proteinValue * 4.0))
             let entry = FoodEntry(
                 name: label.isEmpty ? "Protein" : label,
-                calories: 0,
-                proteinG: Double(numericValue),
+                calories: calculatedKcal,
+                proteinG: proteinValue,
+                carbsG: 0,
+                fatG: 0,
                 mealType: ""
             )
             log.foodEntries.append(entry)
         }
 
         try? modelContext.save()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
         dismiss()
     }
 }

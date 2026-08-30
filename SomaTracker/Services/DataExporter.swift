@@ -43,16 +43,33 @@ struct DataExporter {
             let protein = "\(Int(log.totalProtein.rounded()))"
             let water = "\(log.totalWater)"
 
-            let foodSummaries = log.foodEntries.map { entry in
+            var allItemSummaries: [String] = []
+
+            for entry in log.foodEntries {
                 let name = entry.name.isEmpty ? "Food" : entry.name
-                var details = "\(name): \(entry.calories) kcal"
+                var details = "\(name): \(entry.effectiveCalories) kcal"
+                var macros: [String] = []
                 if entry.proteinG > 0 {
-                    details += " (\(Int(entry.proteinG.rounded()))g protein)"
+                    macros.append("\(Int(entry.proteinG.rounded()))g P")
                 }
-                return details
+                if entry.carbsG > 0 {
+                    macros.append("\(Int(entry.carbsG.rounded()))g C")
+                }
+                if entry.fatG > 0 {
+                    macros.append("\(Int(entry.fatG.rounded()))g F")
+                }
+                if !macros.isEmpty {
+                    details += " (\(macros.joined(separator: ", ")))"
+                }
+                allItemSummaries.append(details)
             }
 
-            let itemsJoined = foodSummaries.joined(separator: " | ")
+            for waterEntry in log.waterEntries {
+                let title = waterEntry.resolvedTitle
+                allItemSummaries.append("\(title): \(waterEntry.amount) ml")
+            }
+
+            let itemsJoined = allItemSummaries.joined(separator: " | ")
             let escapedItems = "\"\(itemsJoined.replacingOccurrences(of: "\"", with: "\"\""))\""
 
             let row = "\(dateStr),\(steps),\(calories),\(protein),\(water),\(escapedItems)\n"

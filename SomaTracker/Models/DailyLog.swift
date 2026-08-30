@@ -17,8 +17,10 @@ final class DailyLog {
     @Relationship(deleteRule: .cascade, inverse: \WaterEntry.dailyLog)
     var waterEntries: [WaterEntry] = []
 
-    var totalCalories: Int { foodEntries.reduce(0) { $0 + $1.calories } }
+    var totalCalories: Int { foodEntries.reduce(0) { $0 + $1.effectiveCalories } }
     var totalProtein: Double { foodEntries.reduce(0.0) { $0 + $1.proteinG } }
+    var totalCarbs: Double { foodEntries.reduce(0.0) { $0 + $1.carbsG } }
+    var totalFat: Double { foodEntries.reduce(0.0) { $0 + $1.fatG } }
     var totalWater: Int { waterEntries.reduce(0) { $0 + $1.amount } }
 
     init(date: Date, steps: Int = 0) {

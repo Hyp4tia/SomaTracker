@@ -62,24 +62,30 @@ struct SettingsView: View {
             Section {
                 goalRow(
                     icon: "flame.fill",
-                    color: SomaColors.coral,
+                    iconColor: SomaColors.coral,
+                    isCircularBadge: false,
                     title: "Calories",
+                    subtitle: "Daily energy target",
                     value: "\(profile?.dailyCalorieGoal ?? 2_000) kcal",
                     goalType: .calories
                 )
 
                 goalRow(
                     icon: "drop.fill",
-                    color: SomaColors.aqua,
+                    iconColor: .blue,
+                    isCircularBadge: false,
                     title: "Water",
+                    subtitle: "Daily hydration goal",
                     value: "\(Units.waterValue(ml: profile?.dailyWaterGoalML ?? 2_000, system: unitSystem)) \(Units.waterUnit(unitSystem))",
                     goalType: .water
                 )
 
                 goalRow(
                     icon: "leaf.fill",
-                    color: SomaColors.iris,
+                    iconColor: SomaColors.iris,
+                    isCircularBadge: false,
                     title: "Protein",
+                    subtitle: "Macro recovery target",
                     value: "\(profile?.dailyProteinGoalG ?? 120) g",
                     goalType: .protein
                 )
@@ -94,22 +100,37 @@ struct SettingsView: View {
                 NavigationLink {
                     HistoryView()
                 } label: {
-                    HStack(spacing: 12) {
-                        settingsBadge(icon: "clock.arrow.circlepath", color: SomaColors.streakOrange)
+                    HStack(spacing: 14) {
+                        rowIcon(icon: "clock.arrow.circlepath", color: SomaColors.navy, isCircularBadge: false)
 
-                        Text("Log History")
-                            .foregroundStyle(Color(.label))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Log History")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Color(.label))
+
+                            Text("Review past logs & timeline")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
                     }
+                    .padding(.vertical, 3)
                 }
 
                 Button {
                     showExportSheet = true
                 } label: {
-                    HStack(spacing: 12) {
-                        settingsBadge(icon: "square.and.arrow.up", color: SomaColors.emerald)
+                    HStack(spacing: 14) {
+                        rowIcon(icon: "square.and.arrow.up", color: SomaColors.emerald, isCircularBadge: false)
 
-                        Text("Export Data (.csv)")
-                            .foregroundStyle(Color(.label))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Export Data (.csv)")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Color(.label))
+
+                            Text("Download spreadsheet report")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
 
                         Spacer()
 
@@ -117,6 +138,7 @@ struct SettingsView: View {
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Color(.tertiaryLabel))
                     }
+                    .padding(.vertical, 3)
                 }
             } header: {
                 Text("HISTORY & DATA")
@@ -124,11 +146,80 @@ struct SettingsView: View {
 
             // MARK: - Preferences
             Section {
-                HStack(spacing: 12) {
-                    settingsBadge(icon: "bell.fill", color: Color(hex: "FF7A00"))
+                HStack(spacing: 14) {
+                    // Soft coral/red bell matching screenshot
+                    rowIcon(icon: "bell.fill", color: Color(red: 0.95, green: 0.35, blue: 0.35), isCircularBadge: false)
 
-                    Toggle("Daily Reminders", isOn: $notificationManager.isEnabled)
-                        .foregroundStyle(Color(.label))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Daily reminder")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Color(.label))
+
+                        Text("Get a gentle practice nudge")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color(.secondaryLabel))
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $notificationManager.isEnabled)
+                        .labelsHidden()
+                        .tint(Color.green)
+                }
+                .padding(.vertical, 3)
+
+                if notificationManager.isEnabled {
+                    HStack(spacing: 14) {
+                        // Royal blue circular badge with white clock icon matching screenshot
+                        rowIcon(icon: "clock.fill", color: Color(red: 0.08, green: 0.45, blue: 0.95), isCircularBadge: true)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Reminder time")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Color(.label))
+
+                            Text("Morning habit check-in")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+
+                        Spacer()
+
+                        DatePicker(
+                            "",
+                            selection: $notificationManager.dailyReminderTime,
+                            displayedComponents: .hourAndMinute
+                        )
+                        .labelsHidden()
+                        .datePickerStyle(.compact)
+                    }
+                    .padding(.vertical, 3)
+
+                    HStack(spacing: 14) {
+                        // Evening wrap up reminder time
+                        rowIcon(icon: "moon.fill", color: Color(red: 0.35, green: 0.35, blue: 0.85), isCircularBadge: true)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Evening wrap-up")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Color(.label))
+
+                            Text("Review what you missed before bed")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+
+                        Spacer()
+
+                        DatePicker(
+                            "",
+                            selection: $notificationManager.eveningReminderTime,
+                            displayedComponents: .hourAndMinute
+                        )
+                        .labelsHidden()
+                        .datePickerStyle(.compact)
+                    }
+                    .padding(.vertical, 3)
                 }
 
                 Picker(selection: $unitSystemRaw) {
@@ -136,12 +227,20 @@ struct SettingsView: View {
                         Text(system.title).tag(system.rawValue)
                     }
                 } label: {
-                    HStack(spacing: 12) {
-                        settingsBadge(icon: "ruler.fill", color: Color(hex: "007AFF"))
+                    HStack(spacing: 14) {
+                        rowIcon(icon: "ruler.fill", color: Color(hex: "007AFF"), isCircularBadge: false)
 
-                        Text("Units")
-                            .foregroundStyle(Color(.label))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Units")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Color(.label))
+
+                            Text("Measurement standard")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
                     }
+                    .padding(.vertical, 3)
                 }
                 .pickerStyle(.menu)
             } header: {
@@ -153,11 +252,18 @@ struct SettingsView: View {
                 Button {
                     requestReview()
                 } label: {
-                    HStack(spacing: 12) {
-                        settingsBadge(icon: "star.fill", color: Color(hex: "FFCC00"))
+                    HStack(spacing: 14) {
+                        rowIcon(icon: "star.fill", color: Color(hex: "FFCC00"), isCircularBadge: false)
 
-                        Text("Rate Soma")
-                            .foregroundStyle(Color(.label))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Rate Soma")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Color(.label))
+
+                            Text("Share your review on the App Store")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
 
                         Spacer()
 
@@ -165,16 +271,24 @@ struct SettingsView: View {
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Color(.tertiaryLabel))
                     }
+                    .padding(.vertical, 3)
                 }
 
                 Button {
                     openURL("https://x.com/hypatox?s=21&t=-yUOJjsm0CIezkq3MgTq5Q")
                 } label: {
-                    HStack(spacing: 12) {
-                        settingsBadge(icon: "paperplane.fill", color: Color(hex: "5856D6"))
+                    HStack(spacing: 14) {
+                        rowIcon(icon: "paperplane.fill", color: Color(hex: "5856D6"), isCircularBadge: false)
 
-                        Text("Contact & Feedback")
-                            .foregroundStyle(Color(.label))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Contact & Feedback")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Color(.label))
+
+                            Text("Reach out directly with questions")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
 
                         Spacer()
 
@@ -182,16 +296,24 @@ struct SettingsView: View {
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Color(.tertiaryLabel))
                     }
+                    .padding(.vertical, 3)
                 }
 
                 Button {
                     openURL("https://soma-tracker.app/privacy")
                 } label: {
-                    HStack(spacing: 12) {
-                        settingsBadge(icon: "lock.fill", color: Color(hex: "64748B"))
+                    HStack(spacing: 14) {
+                        rowIcon(icon: "lock.fill", color: Color(hex: "64748B"), isCircularBadge: false)
 
-                        Text("Privacy Policy")
-                            .foregroundStyle(Color(.label))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Privacy Policy")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Color(.label))
+
+                            Text("Your health data stays on device")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
 
                         Spacer()
 
@@ -199,35 +321,10 @@ struct SettingsView: View {
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Color(.tertiaryLabel))
                     }
+                    .padding(.vertical, 3)
                 }
             } header: {
                 Text("ABOUT & FEEDBACK")
-            }
-
-            // MARK: - Support Project
-            Section {
-                Button {
-                    openURL("https://buymeacoffee.com/zeyadhussein")
-                } label: {
-                    HStack(spacing: 10) {
-                        Text("\u{2615}")
-                            .font(.system(size: 18))
-
-                        Text("Buy Me a Coffee")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.black)
-
-                        Spacer()
-
-                        Image(systemName: "arrow.up.right")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.black.opacity(0.6))
-                    }
-                    .padding(.vertical, 4)
-                }
-                .listRowBackground(SomaColors.buyMeCoffeeYellow)
-            } header: {
-                Text("SUPPORT")
             }
 
             // MARK: - Danger Zone
@@ -235,12 +332,20 @@ struct SettingsView: View {
                 Button(role: .destructive) {
                     showResetConfirmation = true
                 } label: {
-                    HStack(spacing: 12) {
-                        settingsBadge(icon: "trash.fill", color: .red)
+                    HStack(spacing: 14) {
+                        rowIcon(icon: "trash.fill", color: .red, isCircularBadge: false)
 
-                        Text("Reset All Data")
-                            .foregroundStyle(.red)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Reset All Data")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.red)
+
+                            Text("Delete all records and restart")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.red.opacity(0.8))
+                        }
                     }
+                    .padding(.vertical, 3)
                 }
                 .confirmationDialog(
                     "Reset All Data?",
@@ -290,7 +395,9 @@ struct SettingsView: View {
         .sheet(isPresented: $showExportSheet) {
             ExportDatePickerSheet(logs: logs)
                 .preferredColorScheme(.light)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.fraction(0.70), .large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(Color(.systemGroupedBackground))
         }
     }
 
@@ -298,8 +405,10 @@ struct SettingsView: View {
 
     private func goalRow(
         icon: String,
-        color: Color = SomaColors.navy,
+        iconColor: Color,
+        isCircularBadge: Bool,
         title: String,
+        subtitle: String,
         value: String,
         goalType: GoalType
     ) -> some View {
@@ -314,34 +423,55 @@ struct SettingsView: View {
                 goalDraftValue = "\(profile?.dailyProteinGoalG ?? 120)"
             }
         } label: {
-            HStack(spacing: 12) {
-                settingsBadge(icon: icon, color: color)
+            HStack(spacing: 14) {
+                rowIcon(icon: icon, color: iconColor, isCircularBadge: isCircularBadge)
 
-                Text(title)
-                    .foregroundStyle(Color(.label))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color(.label))
+
+                    Text(subtitle)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color(.secondaryLabel))
+                }
 
                 Spacer()
 
                 Text(value)
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color(.secondaryLabel))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color(.label))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color(.tertiarySystemFill))
+                    .clipShape(Capsule())
 
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color(.tertiaryLabel))
             }
+            .padding(.vertical, 3)
         }
     }
 
-    private func settingsBadge(icon: String, color: Color = SomaColors.navy) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(color)
-                .frame(width: 30, height: 30)
+    @ViewBuilder
+    private func rowIcon(icon: String, color: Color, isCircularBadge: Bool) -> some View {
+        if isCircularBadge {
+            ZStack {
+                Circle()
+                    .fill(color)
+                    .frame(width: 26, height: 26)
 
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 28, height: 28)
+        } else {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 28, height: 28, alignment: .center)
         }
     }
 
@@ -378,6 +508,7 @@ struct SettingsView: View {
         }
 
         try? modelContext.save()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
         editingGoal = nil
     }
 
@@ -391,6 +522,7 @@ struct SettingsView: View {
     }
 
     private func resetAllData() {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
         do {
             try modelContext.delete(model: FoodEntry.self)
             try modelContext.delete(model: WaterEntry.self)

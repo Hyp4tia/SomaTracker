@@ -75,8 +75,12 @@ struct HomeView: View {
         selectedMode == .remaining ? max(dailyWaterGoal - consumedWater, 0) : consumedWater
     }
 
-    private var displayedSteps: Int {
+    private var totalStepsTaken: Int {
         healthKitManager.todaySteps > 0 ? healthKitManager.todaySteps : (todayLog?.steps ?? 0)
+    }
+
+    private var displayedSteps: Int {
+        selectedMode == .remaining ? max(dailyStepGoal - totalStepsTaken, 0) : totalStepsTaken
     }
 
     private var yesterdayCalories: Int {
@@ -91,7 +95,7 @@ struct HomeView: View {
 
     // Steps remaining to goal, or steps beyond goal once reached.
     private var stepProgress: (number: Int, label: String, icon: String, reached: Bool) {
-        let steps = displayedSteps
+        let steps = totalStepsTaken
         let goal = dailyStepGoal
 
         if steps >= goal {
@@ -147,7 +151,7 @@ struct HomeView: View {
             }
             .sheet(isPresented: $showHistorySheet) {
                 NavigationStack {
-                    HistoryView()
+                    HistoryView(isModal: true)
                 }
                 .preferredColorScheme(.light)
             }
@@ -289,7 +293,7 @@ struct HomeView: View {
                 .foregroundStyle(Color(.secondaryLabel))
                 .animation(.snappy(duration: 0.3), value: heroSubtitle)
 
-            SomaSegmentedToggle(selection: $selectedMode)
+            SomaSegmentedToggle(selection: $selectedMode.animation(.snappy(duration: 0.28)))
                 .padding(.top, 18 * scale)
 
             StatsGridView(
@@ -354,15 +358,6 @@ struct HomeView: View {
         .ignoresSafeArea(edges: .bottom)
     }
 
-}
-
-private struct LiquidGlassButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.90 : 1.0)
-            .opacity(configuration.isPressed ? 0.82 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
-    }
 }
 
 #Preview {

@@ -156,6 +156,7 @@ struct WaterLogSheetView: View {
         }
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+        .presentationBackground(Color(.systemBackground))
         .sheet(isPresented: $showCustomInput) {
             // Dismiss this water sheet too, so the user returns to the home page.
             CustomWaterEntryView(onAdded: { dismiss() })

@@ -64,6 +64,18 @@ struct SomaSegmentedToggle: View {
         }
         .pickerStyle(.segmented)
         .padding(.horizontal, 4)
+        .onChange(of: selection) { _, _ in
+            UISelectionFeedbackGenerator().selectionChanged()
+        }
+    }
+}
+
+struct LiquidGlassButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.90 : 1.0)
+            .opacity(configuration.isPressed ? 0.82 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 

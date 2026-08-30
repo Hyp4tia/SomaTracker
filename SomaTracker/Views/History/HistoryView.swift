@@ -20,6 +20,9 @@ enum HistoryFilter: String, CaseIterable, Identifiable {
 }
 
 struct HistoryView: View {
+    var isModal: Bool = false
+
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \DailyLog.date, order: .reverse) private var logs: [DailyLog]
     @AppStorage(Units.storageKey) private var unitSystemRaw = UnitSystem.metric.rawValue
@@ -31,19 +34,17 @@ struct HistoryView: View {
     private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
 
     private var filteredLogs: [DailyLog] {
-        let baseLogs: [DailyLog]
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
+        let baseLogs: [DailyLog]
         if query.isEmpty {
             baseLogs = logs.filter { !$0.foodEntries.isEmpty || !$0.waterEntries.isEmpty || $0.steps > 0 }
         } else {
             baseLogs = logs.filter { log in
                 matchesDate(log.date, query: query) ||
-                matchesType(log: log, query: query) ||
-                log.foodEntries.contains { entry in
-                    entry.name.localizedCaseInsensitiveContains(query) ||
-                    entry.mealType.localizedCaseInsensitiveContains(query)
-                }
+                !matchingFoodEntries(for: log).isEmpty ||
+                !matchingWaterEntries(for: log).isEmpty ||
+                (isStepsQuery(query) && shouldShowSteps(for: log))
             }
         }
 
@@ -52,11 +53,11 @@ struct HistoryView: View {
         case .all:
             return baseLogs
         case .food:
-            return baseLogs.filter { !$0.foodEntries.isEmpty }
+            return baseLogs.filter { !matchingFoodEntries(for: $0).isEmpty }
         case .water:
-            return baseLogs.filter { !$0.waterEntries.isEmpty }
+            return baseLogs.filter { !matchingWaterEntries(for: $0).isEmpty }
         case .steps:
-            return baseLogs.filter { $0.steps > 0 }
+            return baseLogs.filter { shouldShowSteps(for: $0) }
         }
     }
 
@@ -67,7 +68,7 @@ struct HistoryView: View {
                 streakBannerSection
             }
 
-            // Quick Category Filters
+            // Quick Category Filters (Native Segmented Picker)
             if searchText.isEmpty {
                 filterSection
             }
@@ -78,14 +79,10 @@ struct HistoryView: View {
             } else {
                 ForEach(filteredLogs) { log in
                     Section {
-                        // Habits Summary Row
-                        if selectedFilter == .all {
-                            dayHabitsStrip(for: log)
-                        }
-
                         // Food Entries
                         if selectedFilter == .all || selectedFilter == .food {
-                            ForEach(matchingFoodEntries(for: log)) { entry in
+                            let foods = matchingFoodEntries(for: log)
+                            ForEach(foods) { entry in
                                 foodEntryRow(entry, in: log)
                                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                         Button(role: .destructive) {
@@ -98,8 +95,9 @@ struct HistoryView: View {
                         }
 
                         // Water Entries
-                        if (selectedFilter == .all || selectedFilter == .water) && shouldShowWater(for: log) {
-                            ForEach(log.waterEntries.sorted(by: { $0.timestamp > $1.timestamp })) { entry in
+                        if selectedFilter == .all || selectedFilter == .water {
+                            let waters = matchingWaterEntries(for: log)
+                            ForEach(waters) { entry in
                                 waterEntryRow(entry)
                                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                         Button(role: .destructive) {
@@ -112,7 +110,7 @@ struct HistoryView: View {
                         }
 
                         // Steps Entry
-                        if selectedFilter == .steps && log.steps > 0 {
+                        if (selectedFilter == .steps || (selectedFilter == .all && isStepsQuery(searchText))) && shouldShowSteps(for: log) {
                             stepsEntryRow(for: log)
                         }
                     } header: {
@@ -123,38 +121,85 @@ struct HistoryView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("History")
-        .navigationBarTitleDisplayMode(.large)
-        .searchable(text: $searchText, prompt: "Search dates, foods, calories, water, steps...")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(
+            text: $searchText,
+            placement: .automatic,
+            prompt: "Search dates, foods, macros, water, steps..."
+        )
+        .scrollContentBackground(.visible)
+        .safeAreaInset(edge: .bottom) {
+            Color.clear.frame(height: 24)
+        }
         .toolbar {
+            if isModal {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dismiss()
+                    } label: {
+                        ZStack {
+                            Color.clear
+                                .frame(width: 32, height: 32)
+                                .glassEffect(.regular, in: .circle)
+
+                            Image(systemName: "xmark")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(SomaColors.navy)
+                        }
+                        .frame(width: 32, height: 32)
+                        .contentShape(Circle())
+                    }
+                    .buttonStyle(LiquidGlassButtonStyle())
+                    .accessibilityLabel("Done")
+                }
+            }
+
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     showExportSheet = true
                 } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(SomaColors.navy)
+                    ZStack {
+                        Color.clear
+                            .frame(width: 32, height: 32)
+                            .glassEffect(.regular, in: .circle)
+
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(SomaColors.navy)
+                    }
+                    .frame(width: 32, height: 32)
+                    .contentShape(Circle())
                 }
+                .buttonStyle(LiquidGlassButtonStyle())
                 .accessibilityLabel("Export Data")
             }
         }
         .sheet(isPresented: $showExportSheet) {
             ExportDatePickerSheet(logs: logs)
                 .preferredColorScheme(.light)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.fraction(0.70), .large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(Color(.systemGroupedBackground))
+        }
+        .onChange(of: selectedFilter) { _, _ in
+            UISelectionFeedbackGenerator().selectionChanged()
         }
     }
 
-    // MARK: - Filter Section
+    // MARK: - Filter Section (Native iOS Segmented Control)
 
     private var filterSection: some View {
         Section {
-            Picker("Filter", selection: $selectedFilter) {
+            Picker("Category Filter", selection: $selectedFilter) {
                 ForEach(HistoryFilter.allCases) { filter in
-                    Label(filter.rawValue, systemImage: filter.icon).tag(filter)
+                    Text(filter.rawValue).tag(filter)
                 }
             }
             .pickerStyle(.segmented)
-            .listRowInsets(EdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10))
+            .listRowInsets(EdgeInsets(top: 6, leading: 14, bottom: 6, trailing: 14))
+            .listRowBackground(Color.clear)
         }
     }
 
@@ -165,19 +210,11 @@ struct HistoryView: View {
 
         return Section {
             HStack(spacing: 14) {
+                // Solid orange flame icon matching HomeView design
                 ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: streak.currentStreak > 0
-                                    ? [SomaColors.streakOrange, SomaColors.coral]
-                                    : [Color(.systemGray4), Color(.systemGray5)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 44, height: 44)
-                        .shadow(color: (streak.currentStreak > 0 ? SomaColors.streakOrange : Color.clear).opacity(0.35), radius: 6, x: 0, y: 3)
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(streak.currentStreak > 0 ? Color.orange : Color(.systemGray4))
+                        .frame(width: 42, height: 42)
 
                     Image(systemName: "flame.fill")
                         .font(.system(size: 20, weight: .bold))
@@ -199,138 +236,148 @@ struct HistoryView: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("RECORD")
                         .font(.system(size: 9, weight: .bold))
-                        .foregroundStyle(Color(.tertiaryLabel))
+                        .foregroundStyle(Color(.secondaryLabel))
 
                     Text("\(streak.bestStreak)d")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(SomaColors.navy)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Color(.secondarySystemGroupedBackground))
+                .background(Color(.tertiarySystemFill))
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
-            .padding(.vertical, 2)
+            .padding(.vertical, 3)
         } header: {
             Text("STREAK & MILESTONES")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Color(.secondaryLabel))
         }
     }
 
-    // MARK: - Day Section Header
+    // MARK: - Unified Day Section Header (Right-Aligned Metric Cluster)
 
     private func daySectionHeader(for log: DailyLog) -> some View {
-        HStack {
+        HStack(spacing: 8) {
             Text(formatDate(log.date))
-                .font(.system(size: 14, weight: .bold))
+                .font(.subheadline.weight(.bold))
                 .foregroundStyle(Color(.label))
 
             Spacer()
 
-            if log.totalCalories > 0 {
-                Text("\(log.totalCalories.formatted()) kcal")
-                    .font(.system(size: 12, weight: .bold))
+            HStack(spacing: 6) {
+                // Hydration Summary Pill
+                if log.totalWater > 0 {
+                    let amount = Units.waterValue(ml: log.totalWater, system: unitSystem)
+                    let unitString = Units.waterUnit(unitSystem)
+                    HStack(spacing: 3) {
+                        Image(systemName: "drop.fill")
+                            .font(.caption.weight(.semibold))
+                        Text("+\(amount) \(unitString)")
+                            .font(.caption.weight(.semibold))
+                            .monospacedDigit()
+                    }
+                    .foregroundStyle(Color.blue)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.blue.opacity(0.10))
+                    .clipShape(Capsule())
+                }
+
+                // Calories Summary Pill
+                if log.totalCalories > 0 {
+                    HStack(spacing: 3) {
+                        Image(systemName: "flame.fill")
+                            .font(.caption.weight(.semibold))
+                        Text("+\(log.totalCalories.formatted()) kcal")
+                            .font(.caption.weight(.semibold))
+                            .monospacedDigit()
+                    }
                     .foregroundStyle(SomaColors.coral)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
                     .background(SomaColors.coral.opacity(0.12))
                     .clipShape(Capsule())
+                }
             }
         }
-    }
-
-    // MARK: - Day Habits Strip
-
-    private func dayHabitsStrip(for log: DailyLog) -> some View {
-        HStack(spacing: 8) {
-            if log.steps > 0 {
-                habitChip(
-                    icon: "figure.walk",
-                    text: "\(log.steps.formatted())",
-                    color: SomaColors.emerald
-                )
-            }
-
-            if log.totalWater > 0 {
-                let amount = Units.waterValue(ml: log.totalWater, system: unitSystem)
-                habitChip(
-                    icon: "drop.fill",
-                    text: "\(amount) \(Units.waterUnit(unitSystem))",
-                    color: SomaColors.aqua
-                )
-            }
-
-            if log.totalProtein > 0 {
-                habitChip(
-                    icon: "leaf.fill",
-                    text: "\(Int(log.totalProtein.rounded()))g",
-                    color: SomaColors.iris
-                )
-            }
-
-            if log.steps == 0 && log.totalWater == 0 && log.totalProtein == 0 {
-                Text("No additional activity recorded")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color(.tertiaryLabel))
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 2)
-    }
-
-    private func habitChip(icon: String, text: String, color: Color) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.system(size: 10, weight: .bold))
-            Text(text)
-                .font(.system(size: 12, weight: .semibold))
-        }
-        .foregroundStyle(color)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(color.opacity(0.12))
-        .clipShape(Capsule())
+        .textCase(nil)
     }
 
     // MARK: - Food Entry Row
 
     private func foodEntryRow(_ entry: FoodEntry, in log: DailyLog) -> some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(SomaColors.coral.opacity(0.15))
-                    .frame(width: 38, height: 38)
-
-                Image(systemName: "fork.knife")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(SomaColors.coral)
-            }
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: "fork.knife")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(SomaColors.coral)
+                .frame(width: 28, height: 28, alignment: .center)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(resolvedFoodTitle(entry))
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color(.label))
+                    .lineLimit(1)
 
                 Text(formatTime(entry.timestamp))
-                    .font(.system(size: 12))
+                    .font(.caption)
                     .foregroundStyle(Color(.secondaryLabel))
+
+                // Macro breakdown chips nested beneath item
+                if entry.proteinG > 0 || entry.carbsG > 0 || entry.fatG > 0 {
+                    HStack(spacing: 5) {
+                        if entry.proteinG > 0 {
+                            macroTag(
+                                label: "P",
+                                value: "\(Int(entry.proteinG.rounded()))g",
+                                color: SomaColors.iris
+                            )
+                        }
+                        if entry.carbsG > 0 {
+                            macroTag(
+                                label: "C",
+                                value: "\(Int(entry.carbsG.rounded()))g",
+                                color: SomaColors.amber
+                            )
+                        }
+                        if entry.fatG > 0 {
+                            macroTag(
+                                label: "F",
+                                value: "\(Int(entry.fatG.rounded()))g",
+                                color: SomaColors.teal
+                            )
+                        }
+                    }
+                    .padding(.top, 1)
+                }
             }
 
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
-                Text("+\(entry.calories) kcal")
-                    .font(.system(size: 15, weight: .bold))
+                Text("+\(entry.effectiveCalories) kcal")
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
                     .foregroundStyle(SomaColors.coral)
-
-                if entry.proteinG > 0 {
-                    Text("\(Int(entry.proteinG.rounded()))g protein")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(SomaColors.iris)
-                }
             }
         }
         .padding(.vertical, 3)
+    }
+
+    private func macroTag(label: String, value: String, color: Color) -> some View {
+        HStack(spacing: 2) {
+            Text(label)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(color)
+            Text(value)
+                .font(.caption2.weight(.medium))
+                .monospacedDigit()
+                .foregroundStyle(Color(.label))
+        }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(color.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
     }
 
     // MARK: - Water Entry Row
@@ -339,32 +386,28 @@ struct HistoryView: View {
         let displayAmount = Units.waterValue(ml: entry.amount, system: unitSystem)
         let unitString = Units.waterUnit(unitSystem)
 
-        return HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(SomaColors.aqua.opacity(0.15))
-                    .frame(width: 38, height: 38)
-
-                Image(systemName: "drop.fill")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(SomaColors.aqua)
-            }
+        return HStack(spacing: 14) {
+            Image(systemName: "drop.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.blue)
+                .frame(width: 28, height: 28, alignment: .center)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text("Water Intake")
-                    .font(.system(size: 15, weight: .semibold))
+                Text(entry.resolvedTitle)
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color(.label))
 
                 Text(formatTime(entry.timestamp))
-                    .font(.system(size: 12))
+                    .font(.caption)
                     .foregroundStyle(Color(.secondaryLabel))
             }
 
             Spacer()
 
             Text("+\(displayAmount) \(unitString)")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(SomaColors.aqua)
+                .font(.subheadline.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(Color.blue)
         }
         .padding(.vertical, 3)
     }
@@ -372,32 +415,28 @@ struct HistoryView: View {
     // MARK: - Steps Entry Row
 
     private func stepsEntryRow(for log: DailyLog) -> some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(SomaColors.emerald.opacity(0.15))
-                    .frame(width: 38, height: 38)
-
-                Image(systemName: "figure.walk")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(SomaColors.emerald)
-            }
+        HStack(spacing: 14) {
+            Image(systemName: "figure.walk")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.green)
+                .frame(width: 28, height: 28, alignment: .center)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text("Daily Steps")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color(.label))
 
                 Text("Activity synced")
-                    .font(.system(size: 12))
+                    .font(.caption)
                     .foregroundStyle(Color(.secondaryLabel))
             }
 
             Spacer()
 
             Text("\(log.steps.formatted()) steps")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(SomaColors.emerald)
+                .font(.subheadline.weight(.semibold))
+                .monospacedDigit()
+                .foregroundStyle(Color.green)
         }
         .padding(.vertical, 3)
     }
@@ -427,7 +466,7 @@ struct HistoryView: View {
         .padding(.vertical, 24)
     }
 
-    // MARK: - Search Filtering Helpers
+    // MARK: - Search & Filtering Helpers
 
     private func matchesDate(_ date: Date, query: String) -> Bool {
         let calendar = Calendar.current
@@ -463,26 +502,19 @@ struct HistoryView: View {
         return false
     }
 
-    private func matchesType(log: DailyLog, query: String) -> Bool {
-        let waterKeywords = ["water", "drink", "hydrat", "ml", "oz", "fluid"]
-        let calorieKeywords = ["calorie", "cal", "kcal", "food", "eat", "meal"]
-        let proteinKeywords = ["protein", "prot", "gram", "macro"]
-        let stepKeywords = ["step", "walk", "activity", "move"]
+    private func isFoodQuery(_ query: String) -> Bool {
+        let keywords = ["food", "eat", "meal", "calorie", "calories", "kcal", "snack", "breakfast", "lunch", "dinner"]
+        return keywords.contains(where: { $0.contains(query) || query.contains($0) })
+    }
 
-        if waterKeywords.contains(where: { $0.contains(query) || query.contains($0) }) && log.totalWater > 0 {
-            return true
-        }
-        if calorieKeywords.contains(where: { $0.contains(query) || query.contains($0) }) && log.totalCalories > 0 {
-            return true
-        }
-        if proteinKeywords.contains(where: { $0.contains(query) || query.contains($0) }) && log.totalProtein > 0 {
-            return true
-        }
-        if stepKeywords.contains(where: { $0.contains(query) || query.contains($0) }) && log.steps > 0 {
-            return true
-        }
+    private func isWaterQuery(_ query: String) -> Bool {
+        let keywords = ["water", "wa", "drink", "hydrat", "hydration", "ml", "oz", "fluid", "bottle", "glass", "cup"]
+        return keywords.contains(where: { $0.contains(query) || query.contains($0) })
+    }
 
-        return false
+    private func isStepsQuery(_ query: String) -> Bool {
+        let keywords = ["step", "steps", "walk", "activity", "move", "walking"]
+        return keywords.contains(where: { $0.contains(query) || query.contains($0) })
     }
 
     private func matchingFoodEntries(for log: DailyLog) -> [FoodEntry] {
@@ -490,26 +522,77 @@ struct HistoryView: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return sorted }
 
-        if matchesDate(log.date, query: query) || matchesType(log: log, query: query) {
+        // If the query matches the whole day's date, show all food items for that day
+        if matchesDate(log.date, query: query) {
             return sorted
         }
 
+        // If searching specifically for water or steps, do not match food
+        if isWaterQuery(query) && !entryMatchesQueryDirectly(names: sorted.map(\.name), query: query) {
+            return []
+        }
+        if isStepsQuery(query) && !entryMatchesQueryDirectly(names: sorted.map(\.name), query: query) {
+            return []
+        }
+
+        // Match against food name, meal type, calories, or protein
         return sorted.filter { entry in
             entry.name.localizedCaseInsensitiveContains(query) ||
-            entry.mealType.localizedCaseInsensitiveContains(query)
+            entry.mealType.localizedCaseInsensitiveContains(query) ||
+            (isFoodQuery(query) && true) ||
+            "\(entry.effectiveCalories)".contains(query) ||
+            "\(Int(entry.proteinG))".contains(query)
         }
     }
 
-    private func shouldShowWater(for log: DailyLog) -> Bool {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return !log.waterEntries.isEmpty }
+    private func entryMatchesQueryDirectly(names: [String], query: String) -> Bool {
+        names.contains { $0.localizedCaseInsensitiveContains(query) }
+    }
 
-        let waterKeywords = ["water", "drink", "hydrat", "ml", "oz", "fluid"]
-        if waterKeywords.contains(where: { $0.contains(query) || query.contains($0) }) {
-            return !log.waterEntries.isEmpty
+    private func matchingWaterEntries(for log: DailyLog) -> [WaterEntry] {
+        let sorted = log.waterEntries.sorted(by: { $0.timestamp > $1.timestamp })
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return sorted }
+
+        // If query matches the whole day's date, show all water items for that day
+        if matchesDate(log.date, query: query) {
+            return sorted
         }
 
-        return matchesDate(log.date, query: query) && !log.waterEntries.isEmpty
+        // If searching specifically for food or steps, do not match water
+        if isFoodQuery(query) && !isWaterQuery(query) {
+            return []
+        }
+        if isStepsQuery(query) && !isWaterQuery(query) {
+            return []
+        }
+
+        // If query is a water keyword, show all water entries
+        if isWaterQuery(query) {
+            return sorted
+        }
+
+        // Match against title or amount
+        return sorted.filter { entry in
+            entry.resolvedTitle.localizedCaseInsensitiveContains(query) ||
+            "\(entry.amount)".contains(query)
+        }
+    }
+
+    private func shouldShowSteps(for log: DailyLog) -> Bool {
+        guard log.steps > 0 else { return false }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return true }
+
+        if matchesDate(log.date, query: query) {
+            return true
+        }
+
+        if isFoodQuery(query) || isWaterQuery(query) {
+            return false
+        }
+
+        return isStepsQuery(query) || "\(log.steps)".contains(query)
     }
 
     private func resolvedFoodTitle(_ entry: FoodEntry) -> String {
@@ -522,6 +605,7 @@ struct HistoryView: View {
     // MARK: - Mutation Helpers
 
     private func deleteFoodEntry(_ entry: FoodEntry, from log: DailyLog) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         withAnimation(.snappy) {
             log.foodEntries.removeAll { $0.id == entry.id }
             modelContext.delete(entry)
@@ -530,6 +614,7 @@ struct HistoryView: View {
     }
 
     private func deleteWaterEntry(_ entry: WaterEntry, from log: DailyLog) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         withAnimation(.snappy) {
             log.waterEntries.removeAll { $0.id == entry.id }
             modelContext.delete(entry)

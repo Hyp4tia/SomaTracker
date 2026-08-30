@@ -3,13 +3,14 @@ import SwiftUI
 enum SomaColors {
     static let navy = Color(hex: "23225C")
     static let white = Color.white
-    static let buyMeCoffeeYellow = Color(hex: "FFDD00")
     static let statsBackground = Color(.systemGroupedBackground)
 
     // Semantic Metric Palettes
     static let coral = Color(hex: "FF5C39")        // Calories / Food
     static let aqua = Color(hex: "1EA8E6")         // Water / Hydration
     static let iris = Color(hex: "7C5CFC")         // Protein
+    static let amber = Color(hex: "F59E0B")        // Carbs
+    static let teal = Color(hex: "14B8A6")         // Fats
     static let emerald = Color(hex: "10B981")      // Steps / Activity
     static let streakOrange = Color(hex: "FF9500") // Streaks
 }
