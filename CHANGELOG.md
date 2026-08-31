@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased] - 2026-08-30
 
-### ✨ New Features & Engine Updates
+### New Features & Engine Updates
 - **Tactile Haptic Feedback Suite**:
   - `LogSheetView`: Category switching (`UISelectionFeedbackGenerator`), numeric keypad & backspace (`UIImpactFeedbackGenerator(.light)`), clear action (`UIImpactFeedbackGenerator(.medium)`), and successful save (`UINotificationFeedbackGenerator(.success)`).
   - `HistoryView`: Category filter tabs (`UISelectionFeedbackGenerator`) and swipe-to-delete row action (`UIImpactFeedbackGenerator(.medium)`).
@@ -23,7 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Interactive Daily Notification Pickers (`SettingsView.swift`)**:
   - Replaced static reminder cells with native `.datePickerStyle(.compact)` time wheel pickers bound to `dailyReminderTime` and `eveningReminderTime` in `NotificationManager`.
 
-### 🎨 UI, UX & HIG Polish
+### UI, UX & HIG Polish
 - **Log Entry Modal Sheet Refactoring (`LogSheetView.swift`)**:
   - **Native Navigation**: Embedded in `NavigationStack` with an app-wide standard `.glassEffect(.regular, in: .circle)` Liquid Glass `✕` close button and top-left alignment.
   - **Keyboard Accessory Toolbar**: Integrated `.keyboard` toolbar with a "Done" button to dismiss the system keyboard when entering optional descriptions.
@@ -40,7 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Context-Aware History Navigation (`HistoryView.swift`)**:
   - Added `isModal: Bool` parameter. When presented as a modal sheet from Home, displays the Liquid Glass `✕` button; when pushed in Settings via `NavigationLink`, displays only the native `< Back` button.
 
-### 🛡️ App Store Compliance
+### App Store Compliance
 - **Purged External Donation Links**:
   - Completely removed the "Buy Me a Coffee" section and external link from `SettingsView.swift` and `SomaColors.swift` in full compliance with Apple App Store Review Guideline 3.1.1 (In-App Purchase).
 
@@ -48,7 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [0.3.0] - 2026-08-29
 
-### ✨ New Features
+### New Features
 - **Log History & Timeline (`HistoryView.swift`)**:
   - Full chronological timeline of daily food logs, water intake, and synced steps.
   - Real-time instant search matching dates, partial food titles, calorie ranges, and habits.
@@ -67,7 +67,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Rolling Number Counters (Odometer Effect)**:
   - Added `.contentTransition(.numericText())` with snappy spring transitions across the hero calorie counter and the 2×2 stats grid.
 
-### 🎨 UI & UX Improvements
+### UI & UX Improvements
 - **Settings Screen Revamp (`SettingsView.swift`)**:
   - Native iOS `.insetGrouped` list structure with collapsible title.
   - Apple Health-style semantic color hierarchy: Coral (`#FF5C39`) for Calories, Aqua (`#1EA8E6`) for Water, Iris (`#7C5CFC`) for Protein, Amber (`#FF9500`) for History/Streaks, and Emerald (`#10B981`) for Data Export.
@@ -89,7 +89,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [0.2.0] - 2026-06-05
 
-### ✨ New Features & Refactoring
+### New Features & Refactoring
 - **Weekly Chart Empty Day Slots (`WeeklyBarChart.swift`)**:
   - Empty days render a fixed-height faint capsule (7pt, white 12%) to signal an existing slot without competing with logged data.
 - **Responsive Layout Support**:
@@ -102,7 +102,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [0.1.0] - 2026-06-04
 
-### ✨ Initial Release & Core Foundations
+### Initial Release & Core Foundations
 - **Core Tracking Engine (SwiftData)**:
   - Persistent data models for `DailyLog`, `FoodEntry`, `WaterEntry`, and `UserProfile`.
   - Daily calorie intake vs. target calculations, water logging, and step tracking.

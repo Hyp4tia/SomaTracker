@@ -8,17 +8,17 @@ No backend. No authentication. No accounts to manage. Soma stores everything loc
 
 ## Features
 
-- 🔥 Calorie tracking with a Remaining / Consumed toggle and rolling odometer counters
-- 💧 Water intake logging (customizable unit values in ml / fl oz)
-- 🥩 Protein tracking
-- 🚶 Steps auto-synced from HealthKit
-- 📊 Weekly interactive bar chart with live tooltips
-- 📜 Chronological Log History with live prefix search, category filter tabs, and swipe-to-delete
-- 🏆 Daily Streaks & Best Streak record calculator
-- 📤 Data export to CSV with interactive date range picker sheet
-- ✨ AI health assistant tab with contextual suggestions
-- 🎨 iOS 26 Liquid Glass UI and semantic metric color hierarchy
-- 🔒 100% local storage - no data ever leaves the device
+- Calorie tracking with a Remaining / Consumed toggle and rolling odometer counters
+- Water intake logging (customizable unit values in ml / fl oz)
+- Protein tracking
+- Steps auto-synced from HealthKit
+- Weekly interactive bar chart with live tooltips
+- Chronological Log History with live prefix search, category filter tabs, and swipe-to-delete
+- Daily Streaks & Best Streak record calculator
+- Data export to CSV with interactive date range picker sheet
+- AI health assistant tab with contextual suggestions
+- iOS 26 Liquid Glass UI and semantic metric color hierarchy
+- 100% local storage - no data ever leaves the device
 
 ## Tech Stack
 
@@ -78,7 +78,7 @@ Both are required - HealthKit code will fail without them, and Apple will reject
 
 ## Status
 
-🚧 In active development (pre-release). Core data models, HealthKit integration, streak engine, history timeline, data exporter, and navigation are complete.
+In active development (pre-release). Core data models, HealthKit integration, streak engine, history timeline, data exporter, and navigation are complete.
 
 ## Bundle ID
 
