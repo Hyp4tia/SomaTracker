@@ -86,7 +86,7 @@ In active development (pre-release). Core data models, HealthKit integration, st
 
 ## License
 
-All rights reserved. *(Update this if you intend to open-source it.)*
+This project is licensed under the GNU General Public License v3.0 with an Apple App Store Exception. See the [LICENSE](LICENSE) file for details.
 
 ## Contact
 
