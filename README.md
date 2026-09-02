@@ -88,6 +88,3 @@ In active development (pre-release). Core data models, HealthKit integration, st
 
 This project is licensed under the GNU General Public License v3.0 with an Apple App Store Exception. See the [LICENSE](LICENSE) file for details.
 
-## Contact
-
-Built by Hyp4tia. Reach out on [X / Twitter](https://x.com/Hypatox)
