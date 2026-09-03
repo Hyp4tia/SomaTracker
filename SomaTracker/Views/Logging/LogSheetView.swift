@@ -53,38 +53,45 @@ struct LogSheetView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Hero Display Section
+                // Hero Display Section (Kept persistent to avoid responder loop)
                 displaySection
-                    .padding(.top, 14)
+                    .padding(.top, isDescriptionFocused ? 8 : 14)
 
-                Spacer(minLength: 16)
-
-                // Category Chips
+                // Category Chips (Kept persistent)
                 categoryChips
-                    .padding(.bottom, 12)
+                    .padding(.top, isDescriptionFocused ? 14 : 16)
+                    .padding(.bottom, isDescriptionFocused ? 8 : 12)
 
-                // Custom Keypad
-                numberPad
+                if !isDescriptionFocused {
+                    Spacer(minLength: 8)
+
+                    // Custom Keypad
+                    numberPad
+                        .padding(.horizontal, 20)
+
+                    // Primary Save Button
+                    Button {
+                        save()
+                    } label: {
+                        Text("Save")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(canSave ? Color.white : Color(.tertiaryLabel))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 54)
+                            .background(canSave ? selectedCategory.accentColor : Color(.tertiarySystemFill))
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .disabled(!canSave)
                     .padding(.horizontal, 20)
-
-                // Primary Save Button
-                Button {
-                    save()
-                } label: {
-                    Text("Save")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(canSave ? Color.white : Color(.tertiaryLabel))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 54)
-                        .background(canSave ? selectedCategory.accentColor : Color(.tertiarySystemFill))
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .padding(.top, 14)
+                    .padding(.bottom, 8)
+                } else {
+                    Spacer()
                 }
-                .disabled(!canSave)
-                .padding(.horizontal, 20)
-                .padding(.top, 14)
-                .padding(.bottom, 8)
             }
-            .navigationTitle("Log Entry")
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .animation(.snappy(duration: 0.25), value: isDescriptionFocused)
+            .navigationTitle(isDescriptionFocused ? "" : "Log Entry")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -107,17 +114,9 @@ struct LogSheetView: View {
                     .buttonStyle(LiquidGlassButtonStyle())
                     .accessibilityLabel("Close")
                 }
-
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") {
-                        isDescriptionFocused = false
-                    }
-                    .fontWeight(.semibold)
-                }
             }
         }
-        .presentationDetents([.fraction(0.78), .large])
+        .presentationDetents([.fraction(0.78)])
         .presentationDragIndicator(.visible)
         .presentationBackground(Color(.systemBackground))
     }
@@ -185,6 +184,10 @@ struct LogSheetView: View {
             .foregroundStyle(Color(.label))
             .multilineTextAlignment(.center)
             .tint(.primary)
+            .submitLabel(.done)
+            .onSubmit {
+                isDescriptionFocused = false
+            }
             .focused($isDescriptionFocused)
             .padding(.top, 6)
             .padding(.horizontal, 32)

@@ -48,31 +48,31 @@ private struct StatGridCell: View {
     var scale: CGFloat = 1.0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4 * scale) {
+        VStack(alignment: .leading, spacing: 2 * scale) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(value)
-                    .font(.system(size: 30 * scale, weight: .bold, design: .default))
+                    .font(.system(size: 28 * scale, weight: .bold, design: .default))
                     .foregroundStyle(Color(.label))
                     .contentTransition(.numericText())
-                    .animation(.snappy(duration: 0.35, extraBounce: 0.05), value: value)
+                    .animation(.snappy(duration: 0.22), value: value)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.72)
+                    .minimumScaleFactor(0.75)
 
                 if !unit.isEmpty {
-                    Text(unit)
-                        .font(.system(size: 14 * scale, weight: .bold, design: .default))
+                     Text(unit)
+                        .font(.system(size: 14 * scale, weight: .semibold, design: .default))
                         .foregroundStyle(Color(.secondaryLabel))
                 }
             }
 
             Text(label)
-                .font(SomaTypography.body)
+                .font(.system(size: 13 * scale, weight: .medium, design: .default))
                 .foregroundStyle(Color(.secondaryLabel))
-                .animation(.snappy(duration: 0.3), value: label)
+                .animation(.snappy(duration: 0.22), value: label)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 10 * scale)
+        .padding(.vertical, 8 * scale)
         .padding(.horizontal, 8)
     }
 }

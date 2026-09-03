@@ -13,6 +13,7 @@ struct HomeView: View {
     private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
 
     @State private var selectedMode: SomaSegmentedToggleOption = .remaining
+    @State private var selectedDate: Date? = nil
     @State private var didPrepareToday = false
     @State private var showHistorySheet = false
     @State private var dragOffset: CGFloat = 0
@@ -20,6 +21,19 @@ struct HomeView: View {
 
     private var profile: UserProfile? {
         profiles.first
+    }
+
+    private var targetDate: Date {
+        selectedDate ?? Calendar.current.startOfDay(for: .now)
+    }
+
+    private var isViewingToday: Bool {
+        Calendar.current.isDateInToday(targetDate)
+    }
+
+    private var activeLog: DailyLog? {
+        let calendar = Calendar.current
+        return logs.first { calendar.isDate($0.date, inSameDayAs: targetDate) }
     }
 
     private var todayLog: DailyLog? {
@@ -32,7 +46,7 @@ struct HomeView: View {
     }
 
     private var consumedCalories: Int {
-        todayLog?.totalCalories ?? 0
+        activeLog?.totalCalories ?? 0
     }
 
     private var remainingCalories: Int {
@@ -48,7 +62,12 @@ struct HomeView: View {
     }
 
     private var heroSubtitle: String {
-        "kcal · \(displayedCalorieLabel) Today"
+        if isViewingToday {
+            return "kcal · \(displayedCalorieLabel) Today"
+        } else {
+            let dayString = targetDate.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+            return "kcal · \(displayedCalorieLabel) · \(dayString)"
+        }
     }
 
     private var dailyWaterGoal: Int {
@@ -60,11 +79,11 @@ struct HomeView: View {
     }
 
     private var consumedProtein: Double {
-        todayLog?.totalProtein ?? 0
+        activeLog?.totalProtein ?? 0
     }
 
     private var consumedWater: Int {
-        todayLog?.totalWater ?? 0
+        activeLog?.totalWater ?? 0
     }
 
     private var displayedProtein: Double {
@@ -76,19 +95,15 @@ struct HomeView: View {
     }
 
     private var totalStepsTaken: Int {
-        healthKitManager.todaySteps > 0 ? healthKitManager.todaySteps : (todayLog?.steps ?? 0)
+        if isViewingToday {
+            return healthKitManager.todaySteps > 0 ? healthKitManager.todaySteps : (activeLog?.steps ?? 0)
+        } else {
+            return activeLog?.steps ?? 0
+        }
     }
 
     private var displayedSteps: Int {
         selectedMode == .remaining ? max(dailyStepGoal - totalStepsTaken, 0) : totalStepsTaken
-    }
-
-    private var yesterdayCalories: Int {
-        let calendar = Calendar.current
-        guard let yesterday = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: .now)) else {
-            return 0
-        }
-        return logs.first { calendar.isDate($0.date, inSameDayAs: yesterday) }?.totalCalories ?? 0
     }
 
     private var dailyStepGoal: Int { 10_000 }
@@ -105,19 +120,71 @@ struct HomeView: View {
         }
     }
 
-    // Compares today's consumed calories against yesterday's.
-    private var calorieTrend: (text: String, isUp: Bool, hasData: Bool) {
-        let today = consumedCalories
-        let yesterday = yesterdayCalories
-
-        guard yesterday > 0 else {
-            // No baseline to compare against yet.
-            return ("—", true, false)
+    // Compares active day's overall health metrics (calories, protein, water, steps) against the previous day.
+    private var compositeTrend: (text: String, isUp: Bool, hasData: Bool, label: String) {
+        let calendar = Calendar.current
+        let currentDay = targetDate
+        guard let prevDay = calendar.date(byAdding: .day, value: -1, to: currentDay) else {
+            return ("—", true, false, "vs yesterday")
         }
 
-        let change = (Double(today - yesterday) / Double(yesterday)) * 100
+        let prevLog = logs.first { calendar.isDate($0.date, inSameDayAs: prevDay) }
+
+        let calGoal = Double(max(dailyCalorieGoal, 1))
+        let proteinGoal = Double(max(dailyProteinGoal, 1))
+        let waterGoal = Double(max(dailyWaterGoal, 1))
+        let stepGoal = Double(max(dailyStepGoal, 1))
+
+        // Previous day metrics
+        let prevCal = Double(prevLog?.totalCalories ?? 0)
+        let prevProtein = prevLog?.totalProtein ?? 0.0
+        let prevWater = Double(prevLog?.totalWater ?? 0)
+        let prevSteps = Double(prevLog?.steps ?? 0)
+
+        // Current day metrics
+        let currCal = Double(consumedCalories)
+        let currProtein = consumedProtein
+        let currWater = Double(consumedWater)
+        let currSteps = Double(totalStepsTaken)
+
+        // Composite fulfillment scores across all 4 pillars
+        let prevScore = (min(prevCal / calGoal, 1.5)
+                       + min(prevProtein / proteinGoal, 1.5)
+                       + min(prevWater / waterGoal, 1.5)
+                       + min(prevSteps / stepGoal, 1.5)) / 4.0
+
+        let currScore = (min(currCal / calGoal, 1.5)
+                       + min(currProtein / proteinGoal, 1.5)
+                       + min(currWater / waterGoal, 1.5)
+                       + min(currSteps / stepGoal, 1.5)) / 4.0
+
+        let dayComparisonName = isViewingToday ? "yesterday" : prevDay.formatted(.dateTime.weekday(.abbreviated))
+
+        guard prevScore > 0.01 else {
+            return ("—", true, false, "vs \(dayComparisonName)")
+        }
+
+        let change = ((currScore - prevScore) / prevScore) * 100.0
         let rounded = Int(change.rounded())
-        return ("\(abs(rounded))%", rounded >= 0, true)
+
+        let displayText: String
+        if abs(rounded) > 999 {
+            displayText = "\(rounded >= 0 ? "+" : "-")999%"
+        } else {
+            displayText = "\(abs(rounded))%"
+        }
+
+        let isUp = rounded >= 0
+        let labelText: String
+        if rounded == 0 {
+            labelText = "Same as \(dayComparisonName)"
+        } else if isUp {
+            labelText = "Higher than \(dayComparisonName)"
+        } else {
+            labelText = "Lower than \(dayComparisonName)"
+        }
+
+        return (displayText, isUp, true, labelText)
     }
 
     var body: some View {
@@ -139,7 +206,7 @@ struct HomeView: View {
                         .padding(.horizontal, 24)
                         .padding(.top, 48)
 
-                    WeeklyBarChart(logs: logs)
+                    WeeklyBarChart(logs: logs, selectedDate: $selectedDate)
                         .padding(.top, 36)
                         .padding(.horizontal, 16)
 
@@ -170,7 +237,7 @@ struct HomeView: View {
     }
 
     private var topChrome: some View {
-        let trend = calorieTrend
+        let trend = compositeTrend
         let steps = stepProgress
         let trendColor: Color = !trend.hasData
             ? SomaColors.white.opacity(0.7)
@@ -203,7 +270,7 @@ struct HomeView: View {
                 .fill(SomaColors.white.opacity(0.2))
                 .frame(width: 1, height: 38)
 
-            // Trend column — today's intake vs yesterday
+            // Trend column — today's intake vs yesterday across all pillars
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Image(systemName: trend.isUp ? "chart.line.uptrend.xyaxis" : "chart.line.downtrend.xyaxis")
@@ -217,9 +284,7 @@ struct HomeView: View {
                         .animation(.snappy(duration: 0.35), value: trend.text)
                 }
 
-                Text(!trend.hasData
-                    ? "vs yesterday"
-                    : (trend.isUp ? "Higher than yesterday" : "Lower than yesterday"))
+                Text(trend.label)
                     .font(.system(size: 12, weight: .medium, design: .default))
                     .foregroundStyle(SomaColors.white.opacity(0.6))
             }
@@ -285,15 +350,36 @@ struct HomeView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .contentTransition(.numericText())
-                .animation(.snappy(duration: 0.35, extraBounce: 0.05), value: displayedCalories)
+                .animation(.snappy(duration: 0.22), value: displayedCalories)
                 .padding(.top, 12 * scale)
 
-            Text(heroSubtitle)
-                .font(.system(size: 15, weight: .bold, design: .default))
-                .foregroundStyle(Color(.secondaryLabel))
-                .animation(.snappy(duration: 0.3), value: heroSubtitle)
+            HStack(spacing: 8) {
+                Text(heroSubtitle)
+                    .font(.system(size: 15, weight: .bold, design: .default))
+                    .foregroundStyle(Color(.secondaryLabel))
+                    .animation(.snappy(duration: 0.22), value: heroSubtitle)
 
-            SomaSegmentedToggle(selection: $selectedMode.animation(.snappy(duration: 0.28)))
+                if !isViewingToday {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.snappy(duration: 0.22)) {
+                            selectedDate = nil
+                        }
+                    } label: {
+                        Text("Today")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Color.orange)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.orange.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+                }
+            }
+
+            SomaSegmentedToggle(selection: $selectedMode)
                 .padding(.top, 18 * scale)
 
             StatsGridView(

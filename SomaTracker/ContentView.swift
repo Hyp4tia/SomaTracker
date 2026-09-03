@@ -43,7 +43,7 @@ struct ContentView: View {
         .sheet(isPresented: $appRouter.showLogSheet) {
             LogSheetView()
                 .preferredColorScheme(.light)
-                .presentationDetents([.fraction(0.78), .large])
+                .presentationDetents([.fraction(0.78)])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(Color(.systemBackground))
         }

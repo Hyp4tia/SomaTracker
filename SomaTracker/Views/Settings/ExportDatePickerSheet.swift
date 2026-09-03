@@ -120,33 +120,36 @@ struct ExportDatePickerSheet: View {
                         .foregroundStyle(Color(.secondaryLabel))
                         .textCase(.uppercase)
                 }
-
-                // Primary Action Button
-                Section {
-                    Button {
-                        exportData()
-                    } label: {
-                        HStack(spacing: 8) {
-                            Spacer()
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 15, weight: .semibold))
-                            Text("Export CSV")
-                                .font(.system(size: 16, weight: .semibold))
-                            Spacer()
-                        }
-                        .foregroundStyle(.white)
-                        .frame(height: 48)
-                        .background(SomaColors.navy)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                    .disabled(matchingLogsCount == 0)
-                }
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Export History")
             .navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 0) {
+                    Button {
+                        exportData()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 16, weight: .semibold))
+
+                            Text("Export CSV")
+                                .font(.system(size: 17, weight: .semibold))
+                        }
+                        .foregroundStyle(matchingLogsCount > 0 ? Color.white : Color(.tertiaryLabel))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(matchingLogsCount > 0 ? SomaColors.navy : Color(.tertiarySystemFill))
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .buttonStyle(LiquidGlassButtonStyle())
+                    .disabled(matchingLogsCount == 0)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+                    .padding(.bottom, 12)
+                }
+                .background(Color(.systemGroupedBackground))
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {

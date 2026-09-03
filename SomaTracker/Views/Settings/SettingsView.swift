@@ -27,22 +27,10 @@ struct SettingsView: View {
                     ProfileEditView()
                 } label: {
                     HStack(spacing: 14) {
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [SomaColors.navy, SomaColors.iris],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(width: 54, height: 54)
-                                .shadow(color: SomaColors.iris.opacity(0.25), radius: 6, x: 0, y: 3)
-
-                            Text(profileInitials)
-                                .font(.system(size: 20, weight: .bold, design: .default))
-                                .foregroundStyle(.white)
-                        }
+                        Image(systemName: "person.crop.circle.fill")
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(Color.white, Color(.systemGray3))
+                            .font(.system(size: 54))
 
                         VStack(alignment: .leading, spacing: 3) {
                             Text(profile?.name.isEmpty == false ? profile!.name : "User")
