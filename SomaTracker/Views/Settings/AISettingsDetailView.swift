@@ -2,7 +2,7 @@
 //  AISettingsDetailView.swift
 //  SomaTracker
 //
-//  Soma Pro and Siri AI overview screen (no manual API key entry required).
+//  Soma AI and Siri integration overview.
 //
 
 import SwiftUI
@@ -13,7 +13,7 @@ struct AISettingsDetailView: View {
 
     var body: some View {
         List {
-            // Section 1: Pro Status
+            // Section 1: Engine Status & Pro Access
             Section {
                 Button {
                     if !subscriptionManager.isPro {
@@ -33,7 +33,7 @@ struct AISettingsDetailView: View {
 
                         VStack(alignment: .leading, spacing: 3) {
                             HStack {
-                                Text("Soma AI Intelligence")
+                                Text("Soma Intelligence")
                                     .font(.system(size: 16, weight: .semibold))
                                     .foregroundStyle(Color(.label))
 
@@ -56,7 +56,7 @@ struct AISettingsDetailView: View {
                                 }
                             }
 
-                            Text(subscriptionManager.isPro ? "Full unlimited Soma AI & Siri voice access" : "Tap to view Soma Pro plans & unlock unlimited scans")
+                            Text(subscriptionManager.isPro ? "Active · Unlimited vision & voice scans" : "Upgrade to Pro for unlimited AI scans")
                                 .font(.system(size: 13))
                                 .foregroundStyle(Color(.secondaryLabel))
                         }
@@ -72,91 +72,58 @@ struct AISettingsDetailView: View {
                     .padding(.vertical, 4)
                 }
             } header: {
-                Text("SOMA AI ENGINE")
+                Text("STATUS")
             }
 
-            // Section 2: Siri Voice Commands
+            // Section 2: Siri & Action Button Shortcuts
             Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Hands-free Siri commands:")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Color(.secondaryLabel))
+                featureRow(
+                    icon: "mic.fill",
+                    iconColor: SomaColors.navy,
+                    title: "Voice Logging with Siri",
+                    subtitle: "Say \"Hey Siri, log a chicken salad in Soma\""
+                )
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        siriPhraseRow(phrase: "\"Hey Siri, log 100 water with Soma\"", detail: "Logs 100 ml water")
-                        siriPhraseRow(phrase: "\"Hey Siri, log a chicken salad in Soma\"", detail: "Logs 380 kcal, 32g protein")
-                        siriPhraseRow(phrase: "\"Hey Siri, log 500 calories in Soma\"", detail: "Logs 500 kcal energy")
-                        siriPhraseRow(phrase: "\"Hey Siri, log 40 protein in Soma\"", detail: "Logs 40g protein")
-                    }
-                    .padding(.top, 2)
-                }
-                .padding(.vertical, 4)
+                featureRow(
+                    icon: "drop.fill",
+                    iconColor: SomaColors.aqua,
+                    title: "Quick Hydration",
+                    subtitle: "Say \"Hey Siri, log 250 water with Soma\""
+                )
+
+                featureRow(
+                    icon: "button.vertical.left.press.fill",
+                    iconColor: Color(hex: "007AFF"),
+                    title: "Action Button & Lock Screen",
+                    subtitle: "Add Soma Camera or Voice shortcuts in iOS Settings"
+                )
             } header: {
-                Text("SIRI VOICE COMMANDS")
+                Text("SIRI & SHORTCUTS")
             } footer: {
-                Text("Works directly with Siri on iOS without needing to open the app.")
+                Text("Works directly through Siri, Shortcuts, and the iPhone Action Button.")
             }
 
-            // Section 3: iPhone Action Button & Lock Screen Shortcuts
+            // Section 3: Privacy & Security
             Section {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 12) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .fill(Color(hex: "007AFF"))
-                                .frame(width: 36, height: 36)
-                            Image(systemName: "button.vertical.left.press.fill")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(.white)
-                        }
+                featureRow(
+                    icon: "lock.shield.fill",
+                    iconColor: SomaColors.emerald,
+                    title: "Private & Stateless",
+                    subtitle: "Photos and voice notes are never stored on cloud servers"
+                )
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Action Button Quick Capture")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color(.label))
-
-                            Text("Press your iPhone Action Button to instantly snap a meal or record voice")
-                                .font(.system(size: 12))
-                                .foregroundStyle(Color(.secondaryLabel))
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        setupStepRow(step: "1", text: "Open iPhone Settings > Action Button")
-                        setupStepRow(step: "2", text: "Swipe to 'Shortcut' and tap 'Choose a Shortcut'")
-                        setupStepRow(step: "3", text: "Select Soma > 'Snap Meal Photo with Soma AI' or 'Record Voice Meal with Soma AI'")
-                    }
-                    .padding(.top, 4)
-                }
-                .padding(.vertical, 4)
+                featureRow(
+                    icon: "internaldrive.fill",
+                    iconColor: SomaColors.iris,
+                    title: "On-Device History",
+                    subtitle: "All journal entries and metrics remain on your iPhone"
+                )
             } header: {
-                Text("IPHONE ACTION BUTTON")
-            } footer: {
-                Text("You can also add these same shortcuts to your iOS Lock Screen or Control Center.")
-            }
-
-            // Section 4: Privacy & Data Security
-            Section {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "lock.shield.fill")
-                            .foregroundStyle(SomaColors.emerald)
-                        Text("Your Health Data Stays Yours")
-                            .font(.system(size: 15, weight: .semibold))
-                    }
-
-                    Text("All your meal history, daily targets, and personal metrics remain strictly on your iPhone. When using Soma AI, meal photos and descriptions are analyzed in secure, encrypted sessions solely to estimate nutrition facts—never linked to your identity and never sold or shared with advertisers.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color(.secondaryLabel))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.vertical, 4)
-            } header: {
-                Text("PRIVACY & DATA SECURITY")
+                Text("PRIVACY")
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("Soma AI & Siri")
+        .navigationTitle("AI & Siri")
         .navigationBarTitleDisplayMode(.inline)
         .hideTabBarWithCoordinator()
         .sheet(isPresented: $showPaywall) {
@@ -164,33 +131,29 @@ struct AISettingsDetailView: View {
         }
     }
 
-    private func siriPhraseRow(phrase: String, detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(phrase)
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                .foregroundStyle(SomaColors.navy)
+    private func featureRow(icon: String, iconColor: Color, title: String, subtitle: String) -> some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(iconColor)
+                    .frame(width: 32, height: 32)
 
-            Text(detail)
-                .font(.system(size: 11))
-                .foregroundStyle(Color(.tertiaryLabel))
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color(.label))
+
+                Text(subtitle)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(.secondaryLabel))
+            }
         }
-        .padding(.vertical, 2)
-    }
-
-    private func setupStepRow(step: String, text: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text(step)
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 20, height: 20)
-                .background(SomaColors.navy)
-                .clipShape(Circle())
-
-            Text(text)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color(.label))
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        .padding(.vertical, 3)
     }
 }
 

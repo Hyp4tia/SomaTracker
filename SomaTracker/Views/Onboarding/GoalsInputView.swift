@@ -45,6 +45,7 @@ struct GoalsInputView: View {
                     OnboardingField(title: "Daily Calories (kcal)", text: $draft.dailyCalorieGoal, keyboardType: .numberPad)
                     OnboardingField(title: "Daily Water (ml)", text: $draft.dailyWaterGoalML, keyboardType: .numberPad)
                     OnboardingField(title: "Daily Protein (g)", text: $draft.dailyProteinGoalG, keyboardType: .numberPad)
+                    OnboardingField(title: "Daily Steps", text: $draft.dailyStepGoal, keyboardType: .numberPad)
                 }
                 .padding(.top, 28)
 
@@ -92,6 +93,7 @@ struct GoalsInputView: View {
         profile.dailyCalorieGoal = draft.resolvedDailyCalorieGoal
         profile.dailyWaterGoalML = draft.resolvedDailyWaterGoalML
         profile.dailyProteinGoalG = draft.resolvedDailyProteinGoalG
+        profile.dailyStepGoal = draft.resolvedDailyStepGoal
         profile.hasCompletedOnboarding = true
 
         if profiles.first == nil {

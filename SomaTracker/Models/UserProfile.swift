@@ -17,6 +17,7 @@ final class UserProfile {
     var dailyCalorieGoal: Int
     var dailyWaterGoalML: Int
     var dailyProteinGoalG: Int
+    var dailyStepGoal: Int = 10_000
     var hasCompletedOnboarding: Bool = false
     var createdAt: Date
 
@@ -30,6 +31,7 @@ final class UserProfile {
         dailyCalorieGoal: Int = 2000,
         dailyWaterGoalML: Int = 2000,
         dailyProteinGoalG: Int = 120,
+        dailyStepGoal: Int = 10000,
         hasCompletedOnboarding: Bool = false
     ) {
         self.name = name
@@ -41,6 +43,7 @@ final class UserProfile {
         self.dailyCalorieGoal = dailyCalorieGoal
         self.dailyWaterGoalML = dailyWaterGoalML
         self.dailyProteinGoalG = dailyProteinGoalG
+        self.dailyStepGoal = dailyStepGoal
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.createdAt = .now
     }

@@ -111,7 +111,7 @@ struct HomeView: View {
         selectedMode == .remaining ? max(dailyStepGoal - totalStepsTaken, 0) : totalStepsTaken
     }
 
-    private var dailyStepGoal: Int { 10_000 }
+    private var dailyStepGoal: Int { profile?.dailyStepGoal ?? 10_000 }
 
     // Steps remaining to goal, or steps beyond goal once reached.
     private var stepProgress: (number: Int, label: String, icon: String, reached: Bool) {

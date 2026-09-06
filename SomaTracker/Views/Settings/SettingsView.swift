@@ -81,6 +81,16 @@ struct SettingsView: View {
                     value: "\(profile?.dailyProteinGoalG ?? 120) g",
                     goalType: .protein
                 )
+
+                goalRow(
+                    icon: "figure.walk",
+                    iconColor: SomaColors.emerald,
+                    isCircularBadge: false,
+                    title: "Steps",
+                    subtitle: "Daily movement target",
+                    value: "\(profile?.dailyStepGoal ?? 10_000) steps",
+                    goalType: .steps
+                )
             } header: {
                 Text("DAILY GOALS")
             } footer: {
@@ -235,7 +245,7 @@ struct SettingsView: View {
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(Color(.label))
 
-                            Text("Multimodal recognition, Siri commands & Action Button")
+                            Text("Intelligence, Siri voice & Shortcuts")
                                 .font(.system(size: 13))
                                 .foregroundStyle(Color(.secondaryLabel))
                         }
@@ -561,6 +571,8 @@ struct SettingsView: View {
                 goalDraftValue = "\(Units.waterValue(ml: profile?.dailyWaterGoalML ?? 2_000, system: unitSystem))"
             case .protein:
                 goalDraftValue = "\(profile?.dailyProteinGoalG ?? 120)"
+            case .steps:
+                goalDraftValue = "\(profile?.dailyStepGoal ?? 10_000)"
             }
         } label: {
             HStack(spacing: 14) {
@@ -645,6 +657,8 @@ struct SettingsView: View {
             profile.dailyWaterGoalML = Units.waterToML(value, system: unitSystem)
         case .protein:
             profile.dailyProteinGoalG = value
+        case .steps:
+            profile.dailyStepGoal = value
         }
 
         try? modelContext.save()
@@ -657,6 +671,7 @@ struct SettingsView: View {
         case .water: return Units.waterUnit(unitSystem)
         case .calories: return "kcal"
         case .protein: return "g"
+        case .steps: return "steps"
         case .none: return ""
         }
     }
@@ -694,13 +709,14 @@ struct SettingsView: View {
 // MARK: - GoalType
 
 private enum GoalType {
-    case calories, water, protein
+    case calories, water, protein, steps
 
     var title: String {
         switch self {
         case .calories: "Calories"
         case .water: "Water"
         case .protein: "Protein"
+        case .steps: "Steps"
         }
     }
 }

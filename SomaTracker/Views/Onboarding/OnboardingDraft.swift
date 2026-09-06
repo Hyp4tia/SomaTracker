@@ -9,6 +9,7 @@ struct OnboardingDraft {
     var dailyCalorieGoal = "2000"
     var dailyWaterGoalML = "2000"
     var dailyProteinGoalG = "120"
+    var dailyStepGoal = "10000"
 
     let defaultName = ""
     let defaultAge = 22
@@ -18,6 +19,7 @@ struct OnboardingDraft {
     let defaultDailyCalorieGoal = 2000
     let defaultDailyWaterGoalML = 2000
     let defaultDailyProteinGoalG = 120
+    let defaultDailyStepGoal = 10000
     let defaultActivityLevel = "Moderate"
 
     var resolvedName: String {
@@ -47,5 +49,9 @@ struct OnboardingDraft {
 
     var resolvedDailyProteinGoalG: Int {
         Int(dailyProteinGoalG.replacingOccurrences(of: ",", with: "")) ?? defaultDailyProteinGoalG
+    }
+
+    var resolvedDailyStepGoal: Int {
+        Int(dailyStepGoal.replacingOccurrences(of: ",", with: "")) ?? defaultDailyStepGoal
     }
 }
