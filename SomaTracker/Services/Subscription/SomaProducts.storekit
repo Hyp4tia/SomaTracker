@@ -1,0 +1,116 @@
+{
+  "identifier" : "SOMA_STOREKIT_CONFIG",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "2147483647",
+      "localizations" : [
+        {
+          "description" : "Unlock unlimited AI voice, vision, and Siri intelligence.",
+          "displayName" : "Soma Subscriptions",
+          "locale" : "en_US"
+        }
+      ],
+      "name" : "Soma Subscriptions",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "1.99",
+          "familyShareable" : false,
+          "groupNumber" : 3,
+          "internalID" : "soma_pro_weekly_id",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlimited AI Voice & Vision, billed weekly.",
+              "displayName" : "Soma Pro Weekly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "soma_pro_weekly",
+          "recurringSubscriptionPeriod" : "P1W",
+          "referenceName" : "Soma Pro Weekly",
+          "subscriptionGroupID" : "2147483647",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "soma_pro_monthly_id",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlimited AI Voice & Vision, billed monthly.",
+              "displayName" : "Soma Pro Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "soma_pro_monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Soma Pro Monthly",
+          "subscriptionGroupID" : "2147483647",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "29.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "soma_pro_yearly_id",
+          "introductoryOffer" : {
+            "internalID" : "soma_yearly_trial_id",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P3D"
+          },
+          "localizations" : [
+            {
+              "description" : "Unlimited AI Voice & Vision with a 3-day free trial, billed annually.",
+              "displayName" : "Soma Pro Annual",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "soma_pro_yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Soma Pro Annual",
+          "subscriptionGroupID" : "2147483647",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

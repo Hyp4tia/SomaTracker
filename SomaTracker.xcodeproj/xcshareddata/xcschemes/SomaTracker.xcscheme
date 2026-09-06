@@ -51,6 +51,9 @@
             ReferencedContainer = "container:SomaTracker.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <StoreKitConfiguration
+         relativeFilePath = "SomaTracker/Services/Subscription/SomaProducts.storekit">
+      </StoreKitConfiguration>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"

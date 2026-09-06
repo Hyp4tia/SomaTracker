@@ -174,6 +174,7 @@ struct HistoryView: View {
             EditHistoryEntrySheet(item: item)
                 .preferredColorScheme(.light)
         }
+        .hideTabBarWithCoordinator(!isModal)
         .task {
             DailyLog.deduplicateAllLogs(context: modelContext)
         }
@@ -353,7 +354,7 @@ struct HistoryView: View {
                         .listRowInsets(EdgeInsets(top: 2, leading: 20, bottom: 2, trailing: 20))
                         .listRowSeparator(.visible, edges: .bottom)
                         .listRowBackground(Color(.systemBackground))
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
                                 deleteFoodEntry(entry, from: entry.dailyLog)
                             } label: {
@@ -401,7 +402,7 @@ struct HistoryView: View {
                         .listRowInsets(EdgeInsets(top: 2, leading: 20, bottom: 2, trailing: 20))
                         .listRowSeparator(.visible, edges: .bottom)
                         .listRowBackground(Color(.systemBackground))
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
                                 deleteFoodEntry(entry, from: entry.dailyLog)
                             } label: {
@@ -449,7 +450,7 @@ struct HistoryView: View {
                         .listRowInsets(EdgeInsets(top: 2, leading: 20, bottom: 2, trailing: 20))
                         .listRowSeparator(.visible, edges: .bottom)
                         .listRowBackground(Color(.systemBackground))
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
                                 deleteWaterEntry(entry, from: entry.dailyLog)
                             } label: {
@@ -916,12 +917,10 @@ struct EditHistoryEntrySheet: View {
         case .food(let entry):
             if HistoryView.isProteinEntry(entry) {
                 displayValue = "\(Int(entry.proteinG.rounded()))"
-                let name = entry.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                descriptionText = name.lowercased() == "protein" || name.isEmpty ? "" : name
+                descriptionText = entry.name
             } else {
-                displayValue = "\(entry.effectiveCalories)"
-                let name = entry.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                descriptionText = name.lowercased() == "food" || name.lowercased() == "quick meal" || name.isEmpty ? "" : name
+                displayValue = "\(entry.calories)"
+                descriptionText = entry.name
             }
         case .water(let entry):
             let val = Units.waterValue(ml: entry.amount, system: unitSystem)
@@ -1042,24 +1041,85 @@ struct EditHistoryEntrySheet: View {
 
         switch item {
         case .food(let entry):
+            let updatedName = label.isEmpty ? entry.name : label
             if isProtein {
                 let proteinVal = Double(numericValue)
                 entry.proteinG = proteinVal
                 entry.calories = Int(round(proteinVal * 4.0))
-                entry.name = label.isEmpty ? "Protein" : label
+                entry.name = updatedName
+
+                syncLinkedAIMeal(for: entry, name: updatedName, calories: entry.calories, proteinG: proteinVal, carbsG: entry.carbsG, fatG: entry.fatG)
             } else {
-                entry.calories = numericValue
-                entry.name = label.isEmpty ? "Food" : label
+                let newCalories = numericValue
+                let oldCalories = max(entry.calories, 1)
+
+                // Scale macros proportionally so effectiveCalories matches the edited calories
+                if entry.proteinG > 0 || entry.carbsG > 0 || entry.fatG > 0 {
+                    let ratio = Double(newCalories) / Double(oldCalories)
+                    entry.proteinG = max(0, round(entry.proteinG * ratio * 10) / 10)
+                    entry.carbsG = max(0, round(entry.carbsG * ratio * 10) / 10)
+                    entry.fatG = max(0, round(entry.fatG * ratio * 10) / 10)
+                }
+
+                entry.calories = newCalories
+                entry.name = updatedName
+
+                syncLinkedAIMeal(for: entry, name: updatedName, calories: newCalories, proteinG: entry.proteinG, carbsG: entry.carbsG, fatG: entry.fatG)
             }
         case .water(let entry):
             let ml = Units.waterToML(numericValue, system: unitSystem)
             entry.amount = ml
-            entry.label = label.isEmpty ? nil : label
+            if !label.isEmpty {
+                entry.label = label
+            }
+
+            if let aiId = entry.aiMealEntryId {
+                let descriptor = FetchDescriptor<AIMealEntry>()
+                if let aiEntries = try? modelContext.fetch(descriptor),
+                   let match = aiEntries.first(where: { $0.id == aiId }) {
+                    match.title = "Hydration (\(ml) ml)"
+                    match.storyText = label.isEmpty ? "Logged \(ml) ml water." : label
+                    if match.dailyLog == nil, let log = entry.dailyLog {
+                        match.dailyLog = log
+                    }
+                }
+            }
         }
 
         try? modelContext.save()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         dismiss()
+    }
+
+    private func syncLinkedAIMeal(
+        for entry: FoodEntry,
+        name: String,
+        calories: Int,
+        proteinG: Double,
+        carbsG: Double,
+        fatG: Double
+    ) {
+        let descriptor = FetchDescriptor<AIMealEntry>()
+        guard let aiEntries = try? modelContext.fetch(descriptor) else { return }
+
+        for aiMeal in aiEntries {
+            let isIdMatch = (entry.aiMealEntryId != nil && aiMeal.id == entry.aiMealEntryId)
+            let isHeuristicMatch = entry.aiMealEntryId == nil &&
+                abs(aiMeal.timestamp.timeIntervalSince(entry.timestamp)) < 120 &&
+                (aiMeal.title == entry.name || entry.name.contains(aiMeal.title))
+
+            if isIdMatch || isHeuristicMatch {
+                aiMeal.title = name
+                aiMeal.calories = calories
+                aiMeal.proteinG = proteinG
+                aiMeal.carbsG = carbsG
+                aiMeal.fatG = fatG
+                aiMeal.breakdownNotes = "Updated: \(name) (\(calories) kcal, \(Int(proteinG))g protein, \(Int(carbsG))g carbs, \(Int(fatG))g fat)."
+                if aiMeal.dailyLog == nil, let log = entry.dailyLog {
+                    aiMeal.dailyLog = log
+                }
+            }
+        }
     }
 }
 

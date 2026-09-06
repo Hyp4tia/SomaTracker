@@ -88,6 +88,14 @@ final class DailyLog {
                 }
             }
 
+            // Migrate any linked AI journal entries before deleting duplicate
+            let aiDescriptor = FetchDescriptor<AIMealEntry>()
+            if let allAiEntries = try? context.fetch(aiDescriptor) {
+                for aiEntry in allAiEntries where aiEntry.dailyLog === duplicate {
+                    aiEntry.dailyLog = primary
+                }
+            }
+
             context.delete(duplicate)
         }
 

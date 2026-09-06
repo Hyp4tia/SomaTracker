@@ -8,50 +8,77 @@
 import SwiftUI
 
 struct AISettingsDetailView: View {
+    @State private var subscriptionManager = SubscriptionManager.shared
+    @State private var showPaywall = false
+
     var body: some View {
-        Form {
+        List {
             // Section 1: Pro Status
             Section {
-                HStack(spacing: 14) {
-                    ZStack {
-                        Circle()
-                            .fill(SomaColors.navy)
-                            .frame(width: 44, height: 44)
-
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundStyle(.white)
+                Button {
+                    if !subscriptionManager.isPro {
+                        showPaywall = true
                     }
+                } label: {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            Circle()
+                                .fill(SomaColors.navy)
+                                .frame(width: 44, height: 44)
 
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack {
-                            Text("Soma AI Intelligence")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(Color(.label))
-
-                            Text("PRO")
-                                .font(.system(size: 10, weight: .bold))
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 20, weight: .bold))
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(SomaColors.navy)
-                                .clipShape(Capsule())
                         }
 
-                        Text("Multimodal voice, vision, and natural food recognition")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Color(.secondaryLabel))
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack {
+                                Text("Soma AI Intelligence")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(Color(.label))
+
+                                if subscriptionManager.isPro {
+                                    Text("PRO")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(SomaColors.emerald)
+                                        .clipShape(Capsule())
+                                } else {
+                                    Text(subscriptionManager.remainingFreeScans > 0 ? "\(subscriptionManager.remainingFreeScans) FREE" : "UPGRADE")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(SomaColors.navy)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(SomaColors.navy.opacity(0.12))
+                                        .clipShape(Capsule())
+                                }
+                            }
+
+                            Text(subscriptionManager.isPro ? "Full unlimited Soma AI & Siri voice access" : "Tap to view Soma Pro plans & unlock unlimited scans")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+
+                        Spacer()
+
+                        if !subscriptionManager.isPro {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color(.tertiaryLabel))
+                        }
                     }
+                    .padding(.vertical, 4)
                 }
-                .padding(.vertical, 4)
             } header: {
-                Text("INTELLIGENCE ENGINE")
+                Text("SOMA AI ENGINE")
             }
 
-            // Section 2: Siri AI & Voice Commands
+            // Section 2: Siri Voice Commands
             Section {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Hands-free Siri AI commands:")
+                    Text("Hands-free Siri commands:")
                         .font(.system(size: 14, weight: .medium))
                         .foregroundStyle(Color(.secondaryLabel))
 
@@ -65,9 +92,9 @@ struct AISettingsDetailView: View {
                 }
                 .padding(.vertical, 4)
             } header: {
-                Text("APPLE INTELLIGENCE & SIRI")
+                Text("SIRI VOICE COMMANDS")
             } footer: {
-                Text("Works directly with Apple Intelligence on iOS without needing to open the app.")
+                Text("Works directly with Siri on iOS without needing to open the app.")
             }
 
             // Section 3: iPhone Action Button & Lock Screen Shortcuts
@@ -75,12 +102,12 @@ struct AISettingsDetailView: View {
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 12) {
                         ZStack {
-                            Circle()
-                                .fill(SomaColors.navy.opacity(0.1))
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .fill(Color(hex: "007AFF"))
                                 .frame(width: 36, height: 36)
-                            Image(systemName: "button.programmable")
-                                .font(.system(size: 17, weight: .bold))
-                                .foregroundStyle(SomaColors.navy)
+                            Image(systemName: "button.vertical.left.press.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(.white)
                         }
 
                         VStack(alignment: .leading, spacing: 2) {
@@ -97,7 +124,7 @@ struct AISettingsDetailView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         setupStepRow(step: "1", text: "Open iPhone Settings > Action Button")
                         setupStepRow(step: "2", text: "Swipe to 'Shortcut' and tap 'Choose a Shortcut'")
-                        setupStepRow(step: "3", text: "Select Soma > 'Snap Meal Photo' or 'Record Voice Meal'")
+                        setupStepRow(step: "3", text: "Select Soma > 'Snap Meal Photo with Soma AI' or 'Record Voice Meal with Soma AI'")
                     }
                     .padding(.top, 4)
                 }
@@ -108,27 +135,33 @@ struct AISettingsDetailView: View {
                 Text("You can also add these same shortcuts to your iOS Lock Screen or Control Center.")
             }
 
-            // Section 3: Privacy & Security Guarantee
+            // Section 4: Privacy & Data Security
             Section {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 8) {
                         Image(systemName: "lock.shield.fill")
                             .foregroundStyle(SomaColors.emerald)
-                        Text("100% On-Device & Private")
+                        Text("Your Health Data Stays Yours")
                             .font(.system(size: 15, weight: .semibold))
                     }
 
-                    Text("Voice notes and transcription run locally on your device via Apple Speech Framework. Your health and dietary data remain strictly on your iPhone.")
+                    Text("All your meal history, daily targets, and personal metrics remain strictly on your iPhone. When using Soma AI, meal photos and descriptions are analyzed in secure, encrypted sessions solely to estimate nutrition facts—never linked to your identity and never sold or shared with advertisers.")
                         .font(.system(size: 13))
                         .foregroundStyle(Color(.secondaryLabel))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.vertical, 4)
             } header: {
-                Text("PRIVACY & SECURITY")
+                Text("PRIVACY & DATA SECURITY")
             }
         }
-        .navigationTitle("AI & Siri")
+        .listStyle(.insetGrouped)
+        .navigationTitle("Soma AI & Siri")
         .navigationBarTitleDisplayMode(.inline)
+        .hideTabBarWithCoordinator()
+        .sheet(isPresented: $showPaywall) {
+            SomaPaywallView()
+        }
     }
 
     private func siriPhraseRow(phrase: String, detail: String) -> some View {
@@ -156,6 +189,7 @@ struct AISettingsDetailView: View {
             Text(text)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Color(.label))
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

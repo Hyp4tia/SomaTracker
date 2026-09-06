@@ -41,6 +41,8 @@ struct LogSheetView: View {
     @State private var displayValue = "0"
     @State private var descriptionText = ""
     @State private var showAIMultimodalSheet = false
+    @State private var subscriptionManager = SubscriptionManager.shared
+    @State private var showPaywall = false
     @FocusState private var isDescriptionFocused: Bool
 
     private var numericValue: Int {
@@ -119,20 +121,25 @@ struct LogSheetView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        showAIMultimodalSheet = true
+                        if subscriptionManager.canUseAIFeatures {
+                            showAIMultimodalSheet = true
+                        } else {
+                            showPaywall = true
+                        }
                     } label: {
-                        HStack(spacing: 4) {
+                        ZStack {
+                            Color.clear
+                                .frame(width: 32, height: 32)
+                                .glassEffect(.regular, in: .circle)
+
                             Image(systemName: "sparkles")
                                 .font(.system(size: 13, weight: .bold))
-                            Text("AI Log")
-                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(SomaColors.navy)
                         }
-                        .foregroundStyle(SomaColors.navy)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(SomaColors.navy.opacity(0.08))
-                        .clipShape(Capsule())
+                        .frame(width: 32, height: 32)
+                        .contentShape(Circle())
                     }
+                    .buttonStyle(LiquidGlassButtonStyle())
                     .accessibilityLabel("Log with Soma AI")
                 }
             }
@@ -141,6 +148,9 @@ struct LogSheetView: View {
                     newEntry.syncToFoodEntry(in: modelContext)
                     dismiss()
                 }
+            }
+            .sheet(isPresented: $showPaywall) {
+                SomaPaywallView()
             }
         }
         .presentationDetents([.fraction(0.78)])

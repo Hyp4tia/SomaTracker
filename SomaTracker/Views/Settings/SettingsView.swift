@@ -15,6 +15,10 @@ struct SettingsView: View {
     @State private var goalDraftValue = ""
     @State private var showResetConfirmation = false
     @State private var showExportSheet = false
+    @State private var subscriptionManager = SubscriptionManager.shared
+    @State private var showPaywall = false
+    @State private var showRestoreSuccessAlert = false
+    @State private var showRestoreFailAlert = false
 
     private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
     private var profile: UserProfile? { profiles.first }
@@ -60,7 +64,7 @@ struct SettingsView: View {
 
                 goalRow(
                     icon: "drop.fill",
-                    iconColor: .blue,
+                    iconColor: SomaColors.aqua,
                     isCircularBadge: false,
                     title: "Water",
                     subtitle: "Daily hydration goal",
@@ -132,7 +136,93 @@ struct SettingsView: View {
                 Text("HISTORY & DATA")
             }
 
-            // MARK: - AI & Intelligence
+            // MARK: - Subscription & Pro
+            Section {
+                Button {
+                    showPaywall = true
+                } label: {
+                    HStack(spacing: 14) {
+                        rowIcon(icon: "crown.fill", color: SomaColors.streakOrange, isCircularBadge: false)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack {
+                                Text("Soma Pro")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(Color(.label))
+
+                                if subscriptionManager.isPro {
+                                    Text("ACTIVE")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(SomaColors.emerald)
+                                        .clipShape(Capsule())
+                                } else {
+                                    Text(subscriptionManager.remainingFreeScans > 0 ? "\(subscriptionManager.remainingFreeScans) FREE SCANS" : "UPGRADE")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(SomaColors.navy)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(SomaColors.navy.opacity(0.12))
+                                        .clipShape(Capsule())
+                                }
+                            }
+
+                            Text(subscriptionManager.isPro ? "Full unlimited Soma AI & Siri voice access" : "Unlock unlimited AI voice, camera & Siri logging")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color(.tertiaryLabel))
+                    }
+                    .padding(.vertical, 3)
+                }
+
+                Button {
+                    Task {
+                        let restored = await subscriptionManager.restorePurchases()
+                        if restored {
+                            showRestoreSuccessAlert = true
+                        } else {
+                            showRestoreFailAlert = true
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 14) {
+                        rowIcon(icon: "arrow.clockwise", color: Color(hex: "007AFF"), isCircularBadge: false)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Restore Purchases")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Color(.label))
+
+                            Text("Restore prior App Store subscription")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+
+                        Spacer()
+
+                        if subscriptionManager.isRestoring {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        }
+                    }
+                    .padding(.vertical, 3)
+                }
+                .disabled(subscriptionManager.isRestoring)
+            } header: {
+                Text("SUBSCRIPTION")
+            } footer: {
+                Text("Subscriptions automatically renew unless cancelled at least 24 hours before the end of the current period.")
+            }
+
+            // MARK: - Soma AI & Siri
             Section {
                 NavigationLink {
                     AISettingsDetailView()
@@ -141,11 +231,11 @@ struct SettingsView: View {
                         rowIcon(icon: "sparkles", color: SomaColors.iris, isCircularBadge: false)
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("AI & Intelligence")
+                            Text("Soma AI & Siri")
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(Color(.label))
 
-                            Text("Gemini, Siri Shortcuts & Keychain")
+                            Text("Multimodal recognition, Siri commands & Action Button")
                                 .font(.system(size: 13))
                                 .foregroundStyle(Color(.secondaryLabel))
                         }
@@ -153,7 +243,7 @@ struct SettingsView: View {
                     .padding(.vertical, 3)
                 }
             } header: {
-                Text("INTELLIGENCE & AI")
+                Text("SOMA AI & SIRI")
             }
 
             // MARK: - Preferences
@@ -411,6 +501,19 @@ struct SettingsView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(Color(.systemGroupedBackground))
         }
+        .sheet(isPresented: $showPaywall) {
+            SomaPaywallView()
+        }
+        .alert("Purchases Restored", isPresented: $showRestoreSuccessAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Your Soma Pro subscription has been successfully restored.")
+        }
+        .alert("Restore Notice", isPresented: $showRestoreFailAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(subscriptionManager.lastErrorMessage ?? "No active subscription was found to restore.")
+        }
     }
 
     // MARK: - Row Helpers
@@ -653,6 +756,7 @@ struct ProfileEditView: View {
         }
         .navigationTitle("Edit Profile")
         .navigationBarTitleDisplayMode(.inline)
+        .hideTabBarWithCoordinator()
         .onAppear {
             guard let profile else { return }
             name = profile.name

@@ -106,23 +106,10 @@ struct AIMealDetailView: View {
                     nutritionThreadsSection
                         .padding(.horizontal, 24)
                         .padding(.top, 6)
-
-                    // Bottom clearance for floating action dock
-                    Spacer()
-                        .frame(height: 120)
+                        .padding(.bottom, 36)
                 }
             }
             .scrollIndicators(.hidden)
-
-            // 6. Floating Action Dock (Matching Mockup)
-            FloatingActionDock(
-                isBookmarked: entry.isBookmarked,
-                onLogTap: { logToDailyTracker() },
-                onPhotosTap: { showPhotosPicker = true },
-                onShareTap: { showShareSheet = true },
-                onBookmarkTap: { toggleBookmark() }
-            )
-            .padding(.bottom, 24)
 
             // Success Toast Overlay
             if showLoggedToast {
@@ -133,7 +120,7 @@ struct AIMealDetailView: View {
         .background(Color(.systemBackground))
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
+        .hideTabBarWithCoordinator()
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -152,39 +139,47 @@ struct AIMealDetailView: View {
             }
 
             ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 8) {
+                Menu {
                     Button {
-                        // Collaborator / Share action
+                        logToDailyTracker()
+                    } label: {
+                        Label("Log to Today's Tracker", systemImage: "calendar.badge.plus")
+                    }
+
+                    Button {
+                        showEditDetailsSheet = true
+                    } label: {
+                        Label("Edit Meal & Macros", systemImage: "pencil")
+                    }
+
+                    Button {
+                        showPhotosPicker = true
+                    } label: {
+                        Label("Add Photos", systemImage: "photo.badge.plus")
+                    }
+
+                    Button {
                         showShareSheet = true
                     } label: {
-                        Image(systemName: "person.crop.circle.badge.plus")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(Color(.label))
+                        Label("Share Meal", systemImage: "square.and.arrow.up")
                     }
 
                     Divider()
-                        .frame(height: 12)
 
-                    Menu {
-                        Button("Edit Details", systemImage: "pencil") {
-                            showEditDetailsSheet = true
-                        }
-                        Button(entry.isBookmarked ? "Remove Bookmark" : "Bookmark", systemImage: entry.isBookmarked ? "bookmark.slash" : "bookmark") {
-                            toggleBookmark()
-                        }
-                        Button("Delete Entry", systemImage: "trash", role: .destructive) {
-                            deleteEntry()
-                        }
+                    Button(role: .destructive) {
+                        deleteEntry()
                     } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(Color(.label))
+                        Label("Delete Entry", systemImage: "trash")
                     }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color(.label))
+                        .frame(width: 36, height: 36)
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(Circle())
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color(.secondarySystemBackground))
-                .clipShape(Capsule())
+                .accessibilityLabel("More Options")
             }
         }
         .onAppear {
@@ -355,11 +350,6 @@ struct AIMealDetailView: View {
         }
     }
 
-    private func toggleBookmark() {
-        entry.isBookmarked.toggle()
-        try? modelContext.save()
-    }
-
     private func deleteEntry() {
         playbackService.stop()
         entry.deleteWithSyncedEntries(in: modelContext)
@@ -450,6 +440,7 @@ struct AIMealDetailView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
+                        entry.syncToFoodEntry(in: modelContext)
                         try? modelContext.save()
                         showEditDetailsSheet = false
                     }

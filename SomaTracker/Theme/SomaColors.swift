@@ -13,6 +13,7 @@ enum SomaColors {
     static let teal = Color(hex: "14B8A6")         // Fats
     static let emerald = Color(hex: "10B981")      // Steps / Activity
     static let streakOrange = Color(hex: "FF9500") // Streaks
+    static let subtext = Color(.secondaryLabel)
 }
 
 extension Color {

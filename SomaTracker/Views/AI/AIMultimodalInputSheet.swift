@@ -41,7 +41,7 @@ struct AIMultimodalInputSheet: View {
                             .font(.system(size: 22, weight: .bold, design: .serif))
                             .foregroundStyle(Color(.label))
 
-                        Text("Speak, snap photos, or describe your meal. Siri AI & Gemini will analyze nutrition automatically.")
+                        Text("Speak, snap photos, or describe your meal. Soma AI will analyze nutrition automatically.")
                             .font(.system(size: 14))
                             .foregroundStyle(Color(.secondaryLabel))
                             .multilineTextAlignment(.center)
@@ -405,6 +405,7 @@ struct AIMultimodalInputSheet: View {
                     voiceDurationSeconds: recordedDuration
                 )
 
+                SubscriptionManager.shared.consumeFreeScanIfFreeUser()
                 modelContext.insert(newEntry)
                 try? modelContext.save()
 

@@ -36,6 +36,10 @@ struct AIView: View {
     @State private var isAnalyzingAI: Bool = false
     @State private var analyzingType: AIAnalysisType = .text
 
+    // Subscription & Paywall
+    @State private var subscriptionManager = SubscriptionManager.shared
+    @State private var showPaywall = false
+
     var body: some View {
         ZStack(alignment: .top) {
             Color(.systemGroupedBackground)
@@ -166,6 +170,9 @@ struct AIView: View {
                 selectedEntryForDetail = newEntry
             }
         }
+        .sheet(isPresented: $showPaywall) {
+            SomaPaywallView()
+        }
         .alert("Microphone Access Required", isPresented: $showMicPermissionAlert) {
             Button("Open Settings") {
                 if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
@@ -195,6 +202,10 @@ struct AIView: View {
 
     private func executeQuickAction(_ action: AIQuickAction) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        guard subscriptionManager.canUseAIFeatures else {
+            showPaywall = true
+            return
+        }
         switch action {
         case .camera:
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
@@ -212,14 +223,38 @@ struct AIView: View {
     // MARK: - 1. Header Section
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Voice & Food Intelligence")
-                .font(.system(size: 22, weight: .bold, design: .default))
-                .foregroundStyle(Color(.label))
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Voice & Food Intelligence")
+                    .font(.system(size: 22, weight: .bold, design: .default))
+                    .foregroundStyle(Color(.label))
 
-            Text("Speak, snap, or type to log meals, macros, and hydration instantly.")
-                .font(.system(size: 14))
-                .foregroundStyle(Color(.secondaryLabel))
+                Text("Speak, snap, or type to log meals, macros, and hydration instantly.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color(.secondaryLabel))
+            }
+
+            Spacer()
+
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showPaywall = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 11, weight: .bold))
+                    Text(subscriptionManager.isPro ? "PRO" : (subscriptionManager.remainingFreeScans > 0 ? "\(subscriptionManager.remainingFreeScans) FREE" : "UPGRADE"))
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .tracking(0.5)
+                }
+                .foregroundColor(subscriptionManager.isPro ? .white : SomaColors.navy)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(subscriptionManager.isPro ? SomaColors.navy : SomaColors.navy.opacity(0.10))
+                )
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 4)
@@ -366,7 +401,11 @@ struct AIView: View {
                 // Right: Dedicated Camera Button
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    showCameraCapture = true
+                    if subscriptionManager.canUseAIFeatures {
+                        showCameraCapture = true
+                    } else {
+                        showPaywall = true
+                    }
                 } label: {
                     ZStack {
                         Circle()
@@ -608,17 +647,28 @@ struct AIView: View {
                     aiEntry.dailyLog = todayLog
                     modelContext.insert(aiEntry)
 
+                    subscriptionManager.consumeFreeScanIfFreeUser()
                     try? modelContext.save()
                     withAnimation(.snappy(duration: 0.35)) {
                         isAnalyzingAI = false
                     }
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    showToast("Logged \(analysis.title) · \(analysis.calories) kcal")
+                    if subscriptionManager.isPro {
+                        showToast("Logged \(analysis.title) · \(analysis.calories) kcal")
+                    } else if subscriptionManager.remainingFreeScans > 0 {
+                        showToast("Logged \(analysis.title) · \(subscriptionManager.remainingFreeScans) free logs left")
+                    } else {
+                        showToast("Logged \(analysis.title) · Free trial completed")
+                    }
                 }
             }
 
         } else {
             // START RECORDING
+            guard subscriptionManager.canUseAIFeatures else {
+                showPaywall = true
+                return
+            }
             UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
             Task {
                 if speechService.checkMicrophoneStatus() == .denied {
@@ -654,6 +704,11 @@ struct AIView: View {
     private func processTextInput() {
         let query = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return }
+
+        guard subscriptionManager.canUseAIFeatures else {
+            showPaywall = true
+            return
+        }
 
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         inputText = ""
@@ -717,12 +772,19 @@ struct AIView: View {
                     aiEntry.dailyLog = todayLog
                     modelContext.insert(aiEntry)
 
+                    subscriptionManager.consumeFreeScanIfFreeUser()
                     try? modelContext.save()
                     withAnimation(.snappy(duration: 0.35)) {
                         isAnalyzingAI = false
                     }
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    showToast(parsedWaterCheck.summary)
+                    if subscriptionManager.isPro {
+                        showToast(parsedWaterCheck.summary)
+                    } else if subscriptionManager.remainingFreeScans > 0 {
+                        showToast("\(parsedWaterCheck.summary) · \(subscriptionManager.remainingFreeScans) free logs left")
+                    } else {
+                        showToast("\(parsedWaterCheck.summary) · Free trial completed")
+                    }
                     return
                 }
 
@@ -756,18 +818,29 @@ struct AIView: View {
                 aiEntry.dailyLog = todayLog
                 modelContext.insert(aiEntry)
 
+                subscriptionManager.consumeFreeScanIfFreeUser()
                 try? modelContext.save()
                 withAnimation(.snappy(duration: 0.35)) {
                     isAnalyzingAI = false
                 }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                showToast("Logged \(analysis.title) · \(analysis.calories) kcal")
+                if subscriptionManager.isPro {
+                    showToast("Logged \(analysis.title) · \(analysis.calories) kcal")
+                } else if subscriptionManager.remainingFreeScans > 0 {
+                    showToast("Logged \(analysis.title) · \(subscriptionManager.remainingFreeScans) free logs left")
+                } else {
+                    showToast("Logged \(analysis.title) · Free trial completed")
+                }
             }
         }
     }
 
     private func handleCapturedPhoto(_ image: UIImage) {
         capturedImage = nil
+        guard subscriptionManager.canUseAIFeatures else {
+            showPaywall = true
+            return
+        }
         guard let jpegData = image.jpegData(compressionQuality: 0.82) else { return }
 
         withAnimation(.snappy(duration: 0.25)) {
@@ -830,12 +903,19 @@ struct AIView: View {
                 aiEntry.dailyLog = todayLog
                 modelContext.insert(aiEntry)
 
+                subscriptionManager.consumeFreeScanIfFreeUser()
                 try? modelContext.save()
                 withAnimation(.snappy(duration: 0.35)) {
                     isAnalyzingAI = false
                 }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                showToast("Logged \(analysis.title) · \(analysis.calories) kcal")
+                if subscriptionManager.isPro {
+                    showToast("Logged \(analysis.title) · \(analysis.calories) kcal")
+                } else if subscriptionManager.remainingFreeScans > 0 {
+                    showToast("Logged \(analysis.title) · \(subscriptionManager.remainingFreeScans) free logs left")
+                } else {
+                    showToast("Logged \(analysis.title) · Free trial completed")
+                }
                 capturedImage = nil
             }
         }
