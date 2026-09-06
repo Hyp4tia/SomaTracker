@@ -293,6 +293,95 @@ final class FoodNutritionDatabase {
             carbsG: 4.0,
             fatG: 2.0,
             aliases: ["جبنة قريش", "جبنه قريش", "قريش", "arish", "cottage cheese"]
+        ),
+        // MARK: - Beverages, Sodas & Low-Calorie Drinks
+        FoodItemInfo(
+            name: "7up Lemon Mojito (245ml)",
+            calories: 2,
+            proteinG: 0.0,
+            carbsG: 0.5,
+            fatG: 0.0,
+            aliases: ["7up lemon mojito", "7up mojito", "seven up mojito", "سفن اب موهيتو", "سفن موهيتو", "سفن اب ليمون موهيتو", "7up lemon", "mojito can"]
+        ),
+        FoodItemInfo(
+            name: "7up Free / Diet (250ml)",
+            calories: 2,
+            proteinG: 0.0,
+            carbsG: 0.4,
+            fatG: 0.0,
+            aliases: ["7up free", "7up diet", "diet 7up", "سفن اب دايت", "سفن اب فري"]
+        ),
+        FoodItemInfo(
+            name: "7up Regular Can (330ml)",
+            calories: 140,
+            proteinG: 0.0,
+            carbsG: 36.0,
+            fatG: 0.0,
+            aliases: ["7up", "seven up", "can of 7up", "سفن اب", "سفن"]
+        ),
+        FoodItemInfo(
+            name: "Diet Pepsi / Pepsi Black (330ml)",
+            calories: 1,
+            proteinG: 0.0,
+            carbsG: 0.2,
+            fatG: 0.0,
+            aliases: ["diet pepsi", "pepsi black", "pepsi zero", "pepsi diet", "بيبسي دايت", "بيبسي بلاك", "بيبسي زيرو"]
+        ),
+        FoodItemInfo(
+            name: "Pepsi Regular Can (330ml)",
+            calories: 150,
+            proteinG: 0.0,
+            carbsG: 41.0,
+            fatG: 0.0,
+            aliases: ["pepsi", "can of pepsi", "بيبسي", "كان بيبسي"]
+        ),
+        FoodItemInfo(
+            name: "Coca-Cola Zero Sugar (330ml)",
+            calories: 1,
+            proteinG: 0.0,
+            carbsG: 0.0,
+            fatG: 0.0,
+            aliases: ["coke zero", "coca cola zero", "diet coke", "كولا زيرو", "كوكاكولا زيرو", "كولا دايت"]
+        ),
+        FoodItemInfo(
+            name: "Coca-Cola Regular Can (330ml)",
+            calories: 140,
+            proteinG: 0.0,
+            carbsG: 35.0,
+            fatG: 0.0,
+            aliases: ["coca cola", "coke", "can of coke", "كوكاكولا", "كولا"]
+        ),
+        FoodItemInfo(
+            name: "Red Bull Sugarfree (250ml)",
+            calories: 5,
+            proteinG: 0.0,
+            carbsG: 0.0,
+            fatG: 0.0,
+            aliases: ["red bull sugarfree", "sugarfree red bull", "redbull zero", "ريد بول دايت"]
+        ),
+        FoodItemInfo(
+            name: "Red Bull Energy Drink (250ml)",
+            calories: 115,
+            proteinG: 1.0,
+            carbsG: 27.0,
+            fatG: 0.0,
+            aliases: ["red bull", "redbull", "ريد بول", "مشروب طاقة"]
+        ),
+        FoodItemInfo(
+            name: "Black Coffee / Espresso (No Sugar)",
+            calories: 5,
+            proteinG: 0.3,
+            carbsG: 0.0,
+            fatG: 0.0,
+            aliases: ["black coffee", "espresso", "americano", "قهوة سادة", "قهوة سودا", "اسبريسو", "امريكانو"]
+        ),
+        FoodItemInfo(
+            name: "Fresh Orange Juice (250ml)",
+            calories: 110,
+            proteinG: 1.7,
+            carbsG: 26.0,
+            fatG: 0.5,
+            aliases: ["orange juice", "fresh orange juice", "عصير برتقال", "عصير لمون", "lemonade"]
         )
     ]
 
@@ -324,11 +413,21 @@ final class FoodNutritionDatabase {
 
         let lower = cleaned.lowercased()
 
-        // 1. Water logging (English & Arabic: water, hydration, مية, ماء, مويه, ماي, ازازة, زجاجة, كوباية, كوبايتين)
-        let hasWaterKeyword = lower.contains("water") || lower.contains("drink") || lower.contains("hydration")
+        // 1. Water logging (English & Arabic: water, hydration, مية, ماء, مويه, ماي)
+        let isFlavoredOrSoda = lower.contains("soda") || lower.contains("pepsi") || lower.contains("cola")
+            || lower.contains("7up") || lower.contains("seven up") || lower.contains("sprite")
+            || lower.contains("mojito") || lower.contains("juice") || lower.contains("coffee")
+            || lower.contains("tea") || lower.contains("عصير") || lower.contains("بيبسي")
+            || lower.contains("كولا") || lower.contains("سفن") || lower.contains("قهوة") || lower.contains("شاي")
+
+        let hasWaterKeyword = !isFlavoredOrSoda && (
+            lower.contains("water") || lower.contains("hydration") || lower.contains("drink water")
+            || lower.contains("drinking water") || lower.contains("شربت مية") || lower.contains("شربت ماء")
             || lower.contains("مية") || lower.contains("ماء") || lower.contains("مويه") || lower.contains("ماي")
-            || lower.contains("ازازة") || lower.contains("زجاجة") || lower.contains("قارورة")
-            || lower.contains("كوباية") || lower.contains("كوبايتين")
+            || lower.contains("ازازة مية") || lower.contains("زجاجة ماء") || lower.contains("قارورة ماء")
+            || lower.contains("كوباية مية") || lower.contains("كوبايتين مية") || lower.contains("كوباية ماء")
+            || (lower == "ازازة" || lower == "زجاجة" || lower == "كوباية" || lower == "كوبايتين")
+        )
 
         if hasWaterKeyword {
             var extractedAmount: Int

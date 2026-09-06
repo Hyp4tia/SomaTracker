@@ -27,9 +27,10 @@ final class GeminiAIService: AIServiceProtocol {
         }
 
         let candidateModels = [
+            "gemini-3.6-flash",
             "gemini-3-flash-preview",
-            "gemini-2.5-flash",
             "gemini-flash-latest",
+            "gemini-2.5-flash",
             "gemini-3.5-flash",
             "gemini-2.5-flash-lite"
         ]
@@ -46,6 +47,9 @@ final class GeminiAIService: AIServiceProtocol {
         }
         if !alternativeTranscriptions.isEmpty {
             promptLines.append("Acoustic candidate variations (from fast speech / alternative hypotheses): [\(alternativeTranscriptions.map { "\"\($0)\"" }.joined(separator: ", "))]")
+        }
+        if !photoDataList.isEmpty {
+            promptLines.append("The entry includes \(photoDataList.count) photo(s). Carefully examine visible food, portion sizes, brand packaging, can/bottle labels, and printed nutrition facts.")
         }
         promptLines.append("""
         Please estimate the meal title, general location or setting if mentioned (otherwise empty string), a brief natural narrative (1-2 sentences), total calories, protein (g), carbs (g), and fat (g), and item breakdown.
@@ -84,10 +88,16 @@ final class GeminiAIService: AIServiceProtocol {
         2. Macro Accuracy: Accurately estimate traditional portion sizes, cooking oils/ghee, and typical regional recipes (e.g. baladi bread, tahini, fava beans). For international, restaurant, or fast-food meals (e.g. pizzas, burgers, chicken ranch pizza, pasta, wraps), provide realistic restaurant-grade macros and portions.
         3. Hydration: If the user is logging water (e.g. "مية", "ماء", "شربت مية", "water", "hydration"), include the water amount in ml in the title (e.g. "ماء ٢٥٠ مل" or "250ml Water") and set calories to 0.
         4. Speech & Dialect Slurring Tolerance: The input comes from speech-to-text dictation. Fast speakers, slurred pronunciation, and regional accents (especially Egyptian Arabic) often drop letters (e.g. dropping hamzas like "كوبايه" -> "كوباية" or "مايه" -> "ماء", dropping glottal stops like "أهوة" -> "قهوة", or blending connected words like "شايبلبن" or "سندوتشينحواوشي", or slurred English fast-food phrases). Intelligently reconstruct the user's intended food items, ingredients, and quantities dynamically from the acoustic phonetic context, regardless of slurring, typos, or omitted letters.
-        5. Silence & Non-Food Guard: If the input (audio, text, or photo) contains NO food, NO drinks, is pure room silence, microphone static, ambient background noise, or unintelligible non-food sounds, you MUST return title "No Food Detected" with 0 calories and empty items. NEVER fabricate, invent, or hallucinate food when no food or beverage is present or mentioned.
-        6. Return ONLY valid JSON matching this schema:
+        5. Packaged Beverages, Cans & Nutrition Labels (OCR Priority):
+           - When analyzing photos or descriptions of packaged drinks (such as sodas, sparkling water, energy drinks, juices), snack bags, or labeled containers:
+           - ALWAYS inspect the packaging labels carefully for diet or low-calorie indicators: e.g. "Diet", "Zero Sugar", "Free", "Light", "No Added Sugar", "خالي من السكر", "زيرو", "دايت", "سفن أب موهيتو ليمون".
+           - Read any printed nutrition panel, calorie stamp, or nutritional values (e.g. "2 kcal per 245ml", "1 kcal / 100ml").
+           - YOU MUST USE THE PRINTED NUTRITION NUMBER. NEVER default to standard full-sugar soda values (100–150 kcal) if the can or bottle indicates a zero, diet, or low-calorie variant (e.g. 7up Lemon Mojito is ~2 kcal per 245ml can, Diet Pepsi is 1 kcal, Coca-Cola Zero is 1 kcal).
+           - Scale calories to the depicted container size (e.g. 245ml, 250ml, 330ml, 500ml).
+        6. Silence & Non-Food Guard: If the input (audio, text, or photo) contains NO food, NO drinks, is pure room silence, microphone static, ambient background noise, or unintelligible non-food sounds, you MUST return title "No Food Detected" with 0 calories and empty items. NEVER fabricate, invent, or hallucinate food when no food or beverage is present or mentioned.
+        7. Return ONLY valid JSON matching this schema:
         {
-          "title": "Short descriptive meal title (e.g. كشري مصري or Grilled Salmon Bowl, or 'No Food Detected' if silent/no food)",
+          "title": "Short descriptive meal title (e.g. كشري مصري, 7up Lemon Mojito, or Grilled Salmon Bowl, or 'No Food Detected' if silent/no food)",
           "location": "City, restaurant name or setting if mentioned (e.g. كشري التحرير or Downtown Cairo), otherwise empty string",
           "storyNarrative": "A warm, natural 1-2 sentence description of the meal and nutritional value",
           "calories": 650,
