@@ -13,7 +13,11 @@ struct AIMealJournalCardView: View {
     private var hasValidVoiceAudio: Bool {
         guard let relPath = entry.voiceAudioRelativePath, !relPath.isEmpty else { return false }
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return FileManager.default.fileExists(atPath: docs.appendingPathComponent(relPath).path)
+        let path = docs.appendingPathComponent(relPath).path
+        guard FileManager.default.fileExists(atPath: path),
+              let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+              let size = attrs[.size] as? Int64, size > 1000 else { return false }
+        return true
     }
 
     var body: some View {

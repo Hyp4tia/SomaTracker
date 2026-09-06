@@ -70,6 +70,44 @@ struct AISettingsDetailView: View {
                 Text("Works directly with Apple Intelligence on iOS without needing to open the app.")
             }
 
+            // Section 3: iPhone Action Button & Lock Screen Shortcuts
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(SomaColors.navy.opacity(0.1))
+                                .frame(width: 36, height: 36)
+                            Image(systemName: "button.programmable")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundStyle(SomaColors.navy)
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Action Button Quick Capture")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color(.label))
+
+                            Text("Press your iPhone Action Button to instantly snap a meal or record voice")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        setupStepRow(step: "1", text: "Open iPhone Settings > Action Button")
+                        setupStepRow(step: "2", text: "Swipe to 'Shortcut' and tap 'Choose a Shortcut'")
+                        setupStepRow(step: "3", text: "Select Soma > 'Snap Meal Photo' or 'Record Voice Meal'")
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(.vertical, 4)
+            } header: {
+                Text("IPHONE ACTION BUTTON")
+            } footer: {
+                Text("You can also add these same shortcuts to your iOS Lock Screen or Control Center.")
+            }
+
             // Section 3: Privacy & Security Guarantee
             Section {
                 VStack(alignment: .leading, spacing: 6) {
@@ -104,6 +142,21 @@ struct AISettingsDetailView: View {
                 .foregroundStyle(Color(.tertiaryLabel))
         }
         .padding(.vertical, 2)
+    }
+
+    private func setupStepRow(step: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(step)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(SomaColors.navy)
+                .clipShape(Circle())
+
+            Text(text)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color(.label))
+        }
     }
 }
 

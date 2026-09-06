@@ -19,7 +19,8 @@ final class AIRouter {
         notes: String?,
         photos: [Data],
         audioURL: URL?,
-        directTranscription: String? = nil
+        directTranscription: String? = nil,
+        alternativeTranscriptions: [String] = []
     ) async -> AIMealAnalysisResult {
         // Step 1: Voice transcription (if audio file provided and not already transcribed)
         var voiceTranscript: String? = directTranscription
@@ -30,42 +31,38 @@ final class AIRouter {
             }
         }
 
-        let combinedText = [notes, voiceTranscript]
-            .compactMap { $0 }
-            .joined(separator: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let effectiveNotes = notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let effectiveVoice = voiceTranscript?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        var textElements: [String] = []
+        if let n = effectiveNotes, !n.isEmpty {
+            textElements.append(n)
+        }
+        if let v = effectiveVoice, !v.isEmpty, v != effectiveNotes {
+            textElements.append(v)
+        }
+        let combinedText = textElements.joined(separator: " ")
+
+        // Guard against completely empty/silent input (no photos, no notes, no transcribed speech)
+        if photos.isEmpty && combinedText.isEmpty {
+            return .noFoodDetected
+        }
 
         let config = APIConfiguration.shared
 
-        // Step 2: Route to Gemini 2.0 Flash for all modalities (Photos, Voice Audio, Arabic/English Text)
+        // Step 2: Route to Gemini Flash for all modalities (Photos, Voice Audio, Arabic/English Text)
         if config.hasCloudVisionReady {
             do {
                 let service = GeminiAIService(apiKey: config.bundledGeminiApiKey)
 
-                var audioData: Data? = nil
-                var audioMime: String? = nil
-                if let url = audioURL, let data = try? Data(contentsOf: url), !data.isEmpty {
-                    audioData = data
-                    let ext = url.pathExtension.lowercased()
-                    if ext == "wav" {
-                        audioMime = "audio/wav"
-                    } else if ext == "caf" {
-                        audioMime = "audio/x-caf"
-                    } else {
-                        audioMime = "audio/m4a"
-                    }
-                }
-
-                // If user provided photos, audio recording, or text description:
-                if !photos.isEmpty || audioData != nil || !combinedText.isEmpty {
-                    return try await service.analyze(
-                        userNotes: notes,
-                        photoDataList: photos,
-                        audioData: audioData,
-                        audioMimeType: audioMime,
-                        voiceTranscription: voiceTranscript
-                    )
-                }
+                return try await service.analyze(
+                    userNotes: !combinedText.isEmpty ? combinedText : notes,
+                    photoDataList: photos,
+                    audioData: nil,
+                    audioMimeType: nil,
+                    voiceTranscription: effectiveVoice,
+                    alternativeTranscriptions: alternativeTranscriptions
+                )
             } catch {
                 print("[AIRouter] Gemini AI request error: \(error.localizedDescription). Falling back to on-device engine.")
                 // Fall back to on-device nutritional engine seamlessly
@@ -78,6 +75,10 @@ final class AIRouter {
         let narrative = !combinedText.isEmpty
             ? combinedText
             : "Logged with Soma AI Voice & Vision."
+
+        if parsed.title == "No Food Detected" {
+            return .noFoodDetected
+        }
 
         return AIMealAnalysisResult(
             title: parsed.title,

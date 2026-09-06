@@ -19,7 +19,8 @@ final class GeminiAIService: AIServiceProtocol {
         photoDataList: [Data],
         audioData: Data? = nil,
         audioMimeType: String? = nil,
-        voiceTranscription: String? = nil
+        voiceTranscription: String? = nil,
+        alternativeTranscriptions: [String] = []
     ) async throws -> AIMealAnalysisResult {
         guard !apiKey.isEmpty else {
             throw NSError(domain: "GeminiAIService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Gemini API key is not configured."])
@@ -27,24 +28,29 @@ final class GeminiAIService: AIServiceProtocol {
 
         let candidateModels = [
             "gemini-3-flash-preview",
+            "gemini-2.5-flash",
             "gemini-flash-latest",
             "gemini-3.5-flash",
-            "gemini-2.5-flash-native-audio-latest"
+            "gemini-2.5-flash-lite"
         ]
 
         var parts: [[String: Any]] = []
 
         // 1. Text description & user query
-        var combinedPrompt = "Analyze this meal entry.\n"
+        var promptLines: [String] = ["Analyze this meal entry:"]
         if let notes = userNotes, !notes.isEmpty {
-            combinedPrompt += "User notes: \(notes)\n"
+            promptLines.append("Spoken or written description: \"\(notes)\"")
         }
-        if let voice = voiceTranscription, !voice.isEmpty {
-            combinedPrompt += "Voice note transcript: \(voice)\n"
+        if let voice = voiceTranscription, !voice.isEmpty, voice != userNotes {
+            promptLines.append("Voice dictation transcription: \"\(voice)\"")
         }
-        combinedPrompt += """
+        if !alternativeTranscriptions.isEmpty {
+            promptLines.append("Acoustic candidate variations (from fast speech / alternative hypotheses): [\(alternativeTranscriptions.map { "\"\($0)\"" }.joined(separator: ", "))]")
+        }
+        promptLines.append("""
         Please estimate the meal title, general location or setting if mentioned (otherwise empty string), a brief natural narrative (1-2 sentences), total calories, protein (g), carbs (g), and fat (g), and item breakdown.
-        """
+        """)
+        let combinedPrompt = promptLines.joined(separator: "\n")
         parts.append(["text": combinedPrompt])
 
         // 2. Multimodal Photos (up to 5, base64 encoded)
@@ -58,7 +64,7 @@ final class GeminiAIService: AIServiceProtocol {
             ])
         }
 
-        // 3. Multimodal Audio Voice Note (Raw acoustic audio stream for direct dialect recognition)
+        // 3. Multimodal Audio Voice Note (Raw acoustic audio fallback if transcription was empty)
         if let audio = audioData, !audio.isEmpty {
             let mime = audioMimeType ?? "audio/m4a"
             parts.append([
@@ -75,11 +81,13 @@ final class GeminiAIService: AIServiceProtocol {
 
         Rules:
         1. Language Matching: If the user inputs text, audio, or food in Arabic or Egyptian dialect, return the "title" and "storyNarrative" in natural, warm Arabic (matching their dialect/phrasing). If the user uses English, respond in English.
-        2. Macro Accuracy: Accurately estimate traditional portion sizes, cooking oils/ghee, and typical regional recipes (e.g. baladi bread, tahini, fava beans).
+        2. Macro Accuracy: Accurately estimate traditional portion sizes, cooking oils/ghee, and typical regional recipes (e.g. baladi bread, tahini, fava beans). For international, restaurant, or fast-food meals (e.g. pizzas, burgers, chicken ranch pizza, pasta, wraps), provide realistic restaurant-grade macros and portions.
         3. Hydration: If the user is logging water (e.g. "مية", "ماء", "شربت مية", "water", "hydration"), include the water amount in ml in the title (e.g. "ماء ٢٥٠ مل" or "250ml Water") and set calories to 0.
-        4. Return ONLY valid JSON matching this schema:
+        4. Speech & Dialect Slurring Tolerance: The input comes from speech-to-text dictation. Fast speakers, slurred pronunciation, and regional accents (especially Egyptian Arabic) often drop letters (e.g. dropping hamzas like "كوبايه" -> "كوباية" or "مايه" -> "ماء", dropping glottal stops like "أهوة" -> "قهوة", or blending connected words like "شايبلبن" or "سندوتشينحواوشي", or slurred English fast-food phrases). Intelligently reconstruct the user's intended food items, ingredients, and quantities dynamically from the acoustic phonetic context, regardless of slurring, typos, or omitted letters.
+        5. Silence & Non-Food Guard: If the input (audio, text, or photo) contains NO food, NO drinks, is pure room silence, microphone static, ambient background noise, or unintelligible non-food sounds, you MUST return title "No Food Detected" with 0 calories and empty items. NEVER fabricate, invent, or hallucinate food when no food or beverage is present or mentioned.
+        6. Return ONLY valid JSON matching this schema:
         {
-          "title": "Short descriptive meal title (e.g. كشري مصري or Grilled Salmon Bowl)",
+          "title": "Short descriptive meal title (e.g. كشري مصري or Grilled Salmon Bowl, or 'No Food Detected' if silent/no food)",
           "location": "City, restaurant name or setting if mentioned (e.g. كشري التحرير or Downtown Cairo), otherwise empty string",
           "storyNarrative": "A warm, natural 1-2 sentence description of the meal and nutritional value",
           "calories": 650,
@@ -157,6 +165,27 @@ final class GeminiAIService: AIServiceProtocol {
                     cleanedText = String(cleanedText.dropLast(3))
                 }
                 cleanedText = cleanedText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                // Extract balanced JSON object from first '{' to its matching '}' to remove any trailing LLM quirks
+                if let firstOpen = cleanedText.firstIndex(of: "{") {
+                    var depth = 0
+                    var lastClose: String.Index? = nil
+                    for index in cleanedText[firstOpen...].indices {
+                        let ch = cleanedText[index]
+                        if ch == "{" {
+                            depth += 1
+                        } else if ch == "}" {
+                            depth -= 1
+                            if depth == 0 {
+                                lastClose = index
+                                break
+                            }
+                        }
+                    }
+                    if let lastClose = lastClose {
+                        cleanedText = String(cleanedText[firstOpen...lastClose])
+                    }
+                }
 
                 guard let payloadData = cleanedText.data(using: .utf8) else {
                     continue

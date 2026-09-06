@@ -31,7 +31,10 @@ struct AIMealDetailView: View {
         guard let relPath = entry.voiceAudioRelativePath, !relPath.isEmpty else { return false }
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let fileURL = docs.appendingPathComponent(relPath)
-        return FileManager.default.fileExists(atPath: fileURL.path)
+        guard FileManager.default.fileExists(atPath: fileURL.path),
+              let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+              let size = attrs[.size] as? Int64, size > 1000 else { return false }
+        return true
     }
 
     private var voiceDurationDisplay: String {
@@ -359,8 +362,7 @@ struct AIMealDetailView: View {
 
     private func deleteEntry() {
         playbackService.stop()
-        modelContext.delete(entry)
-        try? modelContext.save()
+        entry.deleteWithSyncedEntries(in: modelContext)
         dismiss()
     }
 

@@ -17,8 +17,8 @@ struct AIMultimodalInputSheet: View {
     @State private var selectedPhotos: [Data] = []
     @State private var pickerItems: [PhotosPickerItem] = []
 
-    // Audio recording state
-    @State private var recordingService = AudioRecordingService()
+    // Audio recording state with native Apple Speech transcription
+    @State private var speechService = SpeechRecognitionService()
     @State private var recordedAudioURL: URL? = nil
     @State private var recordedRelativePath: String? = nil
     @State private var recordedWaveformSamples: [Float] = []
@@ -102,8 +102,8 @@ struct AIMultimodalInputSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") {
-                        if recordingService.isRecording {
-                            recordingService.cancelRecording()
+                        if speechService.isRecordingLive {
+                            speechService.stopLiveTranscription()
                         }
                         dismiss()
                     }
@@ -116,7 +116,7 @@ struct AIMultimodalInputSheet: View {
         !notesText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
         !selectedPhotos.isEmpty ||
         recordedAudioURL != nil ||
-        recordingService.isRecording
+        speechService.isRecordingLive
     }
 
     // MARK: - Photos Section
@@ -192,10 +192,40 @@ struct AIMultimodalInputSheet: View {
 
     private var voiceRecordingSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Voice Note", systemImage: "waveform")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Color(.secondaryLabel))
-                .padding(.horizontal, 20)
+            HStack {
+                Label("Voice Note", systemImage: "waveform")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color(.secondaryLabel))
+
+                Spacer()
+
+                // Speech Language Toggle Pill
+                HStack(spacing: 4) {
+                    ForEach(SpeechLanguage.allCases) { lang in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.snappy(duration: 0.18)) {
+                                speechService.selectedLanguage = lang
+                            }
+                        } label: {
+                            Text(lang.displayName)
+                                .font(.system(size: 10, weight: speechService.selectedLanguage == lang ? .bold : .medium))
+                                .foregroundStyle(speechService.selectedLanguage == lang ? SomaColors.white : Color(.secondaryLabel))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(
+                                    speechService.selectedLanguage == lang
+                                        ? SomaColors.navy
+                                        : Color(.tertiarySystemFill)
+                                )
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(speechService.isRecordingLive)
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
 
             HStack(spacing: 14) {
                 Button {
@@ -203,23 +233,24 @@ struct AIMultimodalInputSheet: View {
                 } label: {
                     ZStack {
                         Circle()
-                            .fill(recordingService.isRecording ? Color.red : SomaColors.navy)
+                            .fill(speechService.isRecordingLive ? Color.red : SomaColors.navy)
                             .frame(width: 48, height: 48)
 
-                        Image(systemName: recordingService.isRecording ? "stop.fill" : "mic.fill")
+                        Image(systemName: speechService.isRecordingLive ? "stop.fill" : "mic.fill")
                             .font(.system(size: 18, weight: .bold))
                             .foregroundStyle(.white)
                     }
                 }
                 .buttonStyle(.plain)
 
-                if recordingService.isRecording {
+                if speechService.isRecordingLive {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Recording voice note...")
+                        Text(speechService.liveTranscribedText.isEmpty ? "Listening..." : speechService.liveTranscribedText)
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(Color.red)
+                            .lineLimit(2)
 
-                        AudioWaveformView(samples: recordingService.waveformSamples, progress: 1.0)
+                        AudioWaveformView(samples: speechService.liveWaveformLevels, progress: 1.0, isLiveRecording: true)
                             .frame(height: 24)
                     }
                 } else if recordedAudioURL != nil {
@@ -244,7 +275,9 @@ struct AIMultimodalInputSheet: View {
                             .frame(height: 24)
                     }
                 } else {
-                    Text("Tap to record what you ate or notes...")
+                    Text(speechService.selectedLanguage == .arabic
+                        ? "اضغط للتسجيل الصوتي لوجبتك..."
+                        : "Tap to record what you ate or notes...")
                         .font(.system(size: 14))
                         .foregroundStyle(Color(.placeholderText))
                 }
@@ -266,7 +299,7 @@ struct AIMultimodalInputSheet: View {
                 .padding(.horizontal, 20)
 
             TextField(
-                "e.g. Jacob's Wedding in Los Angeles, CA. Sourdough toast, salmon bowl, iced latte...",
+                "e.g. Papa Johns chicken ranch medium pizza, or 2 baladi falafel sandwiches...",
                 text: $notesText,
                 axis: .vertical
             )
@@ -282,23 +315,31 @@ struct AIMultimodalInputSheet: View {
 
     private func handleVoiceButtonTap() {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        if recordingService.isRecording {
-            if let result = recordingService.stopRecording() {
-                self.recordedAudioURL = result.url
-                self.recordedRelativePath = result.relativePath
-                self.recordedWaveformSamples = result.samples
-                self.recordedDuration = result.duration
+        if speechService.isRecordingLive {
+            let result = speechService.stopLiveTranscription()
+            self.recordedAudioURL = result.audioURL
+            self.recordedRelativePath = result.relativePath
+            self.recordedWaveformSamples = result.samples
+            self.recordedDuration = result.duration
+
+            let transcript = !result.text.isEmpty ? result.text : speechService.liveTranscribedText
+            if !transcript.isEmpty {
+                if notesText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    notesText = transcript
+                } else {
+                    notesText += " · " + transcript
+                }
             }
         } else {
             Task {
-                let granted = await recordingService.requestPermission()
+                let granted = await speechService.requestAuthorization()
                 if granted {
                     await MainActor.run {
-                        _ = recordingService.startRecording()
+                        _ = speechService.startLiveTranscription()
                     }
                 } else {
                     await MainActor.run {
-                        errorMessage = "Microphone permission is required to record voice notes."
+                        errorMessage = "Microphone & speech recognition permission is required to record voice notes."
                     }
                 }
             }
@@ -308,13 +349,27 @@ struct AIMultimodalInputSheet: View {
     // MARK: - Analysis & Save
 
     private func analyzeAndSave() {
-        if recordingService.isRecording {
-            if let result = recordingService.stopRecording() {
-                self.recordedAudioURL = result.url
-                self.recordedRelativePath = result.relativePath
-                self.recordedWaveformSamples = result.samples
-                self.recordedDuration = result.duration
+        if speechService.isRecordingLive {
+            let result = speechService.stopLiveTranscription()
+            self.recordedAudioURL = result.audioURL
+            self.recordedRelativePath = result.relativePath
+            self.recordedWaveformSamples = result.samples
+            self.recordedDuration = result.duration
+
+            let transcript = !result.text.isEmpty ? result.text : speechService.liveTranscribedText
+            if !transcript.isEmpty {
+                if notesText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    notesText = transcript
+                } else {
+                    notesText += " · " + transcript
+                }
             }
+        }
+
+        let cleanNotes = notesText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanNotes.isEmpty || !selectedPhotos.isEmpty else {
+            errorMessage = "Please enter food notes, take a photo, or record a voice note."
+            return
         }
 
         isAnalyzing = true
@@ -322,13 +377,19 @@ struct AIMultimodalInputSheet: View {
 
         Task {
             let result = await AIRouter.shared.processMultimodalMeal(
-                notes: notesText.isEmpty ? nil : notesText,
+                notes: cleanNotes.isEmpty ? nil : cleanNotes,
                 photos: selectedPhotos,
-                audioURL: recordedAudioURL
+                audioURL: recordedAudioURL,
+                alternativeTranscriptions: speechService.alternativeTranscriptions
             )
 
             await MainActor.run {
                 isAnalyzing = false
+
+                guard !result.isNoFood, result.title != "No Food Detected" else {
+                    errorMessage = "No food detected. Please check your notes or photo."
+                    return
+                }
 
                 let newEntry = AIMealEntry(
                     title: result.title,

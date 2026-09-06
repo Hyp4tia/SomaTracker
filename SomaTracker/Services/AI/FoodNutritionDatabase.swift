@@ -308,6 +308,20 @@ final class FoodNutritionDatabase {
     func parseInput(_ input: String) -> ParsedNutritionResult {
         let normalizedText = normalizeNumerals(input)
         let cleaned = normalizedText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !cleaned.isEmpty else {
+            return ParsedNutritionResult(
+                type: .food(title: "No Food Detected", calories: 0, proteinG: 0, carbsG: 0, fatG: 0),
+                title: "No Food Detected",
+                calories: 0,
+                proteinG: 0,
+                carbsG: 0,
+                fatG: 0,
+                waterML: 0,
+                summary: "No food detected."
+            )
+        }
+
         let lower = cleaned.lowercased()
 
         // 1. Water logging (English & Arabic: water, hydration, مية, ماء, مويه, ماي, ازازة, زجاجة, كوباية, كوبايتين)
@@ -415,6 +429,32 @@ final class FoodNutritionDatabase {
 
         // 5. Intelligent NLP Fallback for unlisted meal descriptions
         let extractedNumber = extractFirstNumber(from: lower)
+
+        let dietaryContextWords = [
+            "eat", "ate", "had", "food", "meal", "snack", "breakfast", "lunch", "dinner", "supper",
+            "drink", "drank", "cup", "plate", "bowl", "slice", "serving", "portion", "piece",
+            "bread", "sandwich", "rice", "chicken", "beef", "meat", "fish", "soup", "salad",
+            "calories", "kcal", "protein", "carbs", "fat", "grams",
+            "أكل", "أكلت", "تناولت", "شرب", "شربت", "فطار", "غدا", "عشا", "سناك", "وجبة",
+            "طبق", "كوب", "كوباية", "قطعة", "شريحة", "رغيف", "عيش", "ساندوتش", "سندوتش",
+            "رز", "فراخ", "لحمة", "سمك", "شوربة", "سلطة", "سعرة", "سعرات", "بروتين", "كارب", "جرام"
+        ]
+        let hasDietaryContext = dietaryContextWords.contains(where: { lower.contains($0) })
+
+        // If no nutrition number is provided and text has zero dietary keywords, it is not food
+        if extractedNumber == nil && !hasDietaryContext {
+            return ParsedNutritionResult(
+                type: .food(title: "No Food Detected", calories: 0, proteinG: 0, carbsG: 0, fatG: 0),
+                title: "No Food Detected",
+                calories: 0,
+                proteinG: 0,
+                carbsG: 0,
+                fatG: 0,
+                waterML: 0,
+                summary: "No food detected."
+            )
+        }
+
         let estCal = extractedNumber != nil && extractedNumber! >= 50 && extractedNumber! <= 3000 ? extractedNumber! : 450
         let estProtein = Double(max(15, Int(round(Double(estCal) * 0.06))))
         let estCarbs = Double(max(20, Int(round(Double(estCal) * 0.10))))
@@ -470,15 +510,50 @@ final class FoodNutritionDatabase {
     }
 
     private func extractFirstNumber(from text: String) -> Int? {
+        // 1. Direct digits (e.g. 50, 100, 250, 500)
         let pattern = "\\d+"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        let nsString = text as NSString
-        let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsString.length))
-
-        if let firstMatch = matches.first {
-            let matchString = nsString.substring(with: firstMatch.range)
-            return Int(matchString)
+        if let regex = try? NSRegularExpression(pattern: pattern) {
+            let nsString = text as NSString
+            let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsString.length))
+            if let firstMatch = matches.first {
+                let matchString = nsString.substring(with: firstMatch.range)
+                if let val = Int(matchString) {
+                    return val
+                }
+            }
         }
+
+        // 2. Common spoken English & Arabic number words
+        let wordNumbers: [(word: String, value: Int)] = [
+            ("thousand", 1000), ("الف", 1000), ("ألف", 1000),
+            ("nine hundred", 900), ("تسعمية", 900),
+            ("eight hundred", 800), ("تمنمية", 800),
+            ("seven hundred", 700), ("سبعمية", 700),
+            ("six hundred", 600), ("ستمية", 600),
+            ("five hundred", 500), ("خمسمية", 500),
+            ("four hundred", 400), ("ربعمية", 400),
+            ("three hundred", 300), ("تلتماية", 300),
+            ("two hundred", 200), ("ميتين", 200), ("مائتين", 200),
+            ("one hundred", 100), ("a hundred", 100), ("hundred", 100),
+            ("ninety", 90), ("تسعين", 90),
+            ("eighty", 80), ("تمانين", 80), ("ثمانين", 80),
+            ("seventy", 70), ("سبعين", 70),
+            ("sixty", 60), ("ستين", 60),
+            ("fifty", 50), ("خمسين", 50),
+            ("forty", 40), ("اربعين", 40), ("أربعين", 40),
+            ("thirty", 30), ("تلاتين", 30), ("ثلاثين", 30),
+            ("twenty five", 25), ("خمسة وعشرين", 25),
+            ("twenty", 20), ("عشرين", 20),
+            ("fifteen", 15), ("خمسطاشر", 15),
+            ("ten", 10), ("عشرة", 10)
+        ]
+
+        for (word, val) in wordNumbers {
+            if text.contains(word) {
+                return val
+            }
+        }
+
         return nil
     }
 }

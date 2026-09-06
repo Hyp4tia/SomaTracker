@@ -32,6 +32,10 @@ struct AIView: View {
     @State private var activeToastMessage: String? = nil
     @State private var showMicPermissionAlert = false
 
+    // AI Thinking & Loading Animation State
+    @State private var isAnalyzingAI: Bool = false
+    @State private var analyzingType: AIAnalysisType = .text
+
     var body: some View {
         ZStack(alignment: .top) {
             Color(.systemGroupedBackground)
@@ -54,8 +58,19 @@ struct AIView: View {
                 }
 
                 // 2. AI Journal Entries (Native Swipe-to-Delete)
-                if !aiEntries.isEmpty {
+                if isAnalyzingAI || !aiEntries.isEmpty {
                     Section {
+                        if isAnalyzingAI {
+                            AILoadingCardView(analysisType: analyzingType)
+                                .listRowInsets(EdgeInsets(top: 6, leading: 18, bottom: 6, trailing: 18))
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                                .transition(.asymmetric(
+                                    insertion: .opacity.combined(with: .scale(scale: 0.95, anchor: .top)),
+                                    removal: .opacity.combined(with: .scale(scale: 0.95, anchor: .top))
+                                ))
+                        }
+
                         ForEach(aiEntries) { entry in
                             SwipeableJournalCardView(
                                 entry: entry,
@@ -78,9 +93,20 @@ struct AIView: View {
 
                             Spacer()
 
-                            Text("\(aiEntries.count) Entries")
-                                .font(.system(size: 12))
-                                .foregroundStyle(Color(.tertiaryLabel))
+                            if isAnalyzingAI {
+                                HStack(spacing: 5) {
+                                    Circle()
+                                        .fill(SomaColors.navy)
+                                        .frame(width: 6, height: 6)
+                                    Text("ANALYZING...")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(SomaColors.navy)
+                                }
+                            } else {
+                                Text("\(aiEntries.count) \(aiEntries.count == 1 ? "Entry" : "Entries")")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Color(.tertiaryLabel))
+                            }
                         }
                         .textCase(nil)
                         .listRowInsets(EdgeInsets(top: 14, leading: 22, bottom: 4, trailing: 22))
@@ -154,6 +180,33 @@ struct AIView: View {
             guard let image = newImage else { return }
             handleCapturedPhoto(image)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .somaTriggerQuickAction)) { notif in
+            if let action = notif.object as? AIQuickAction {
+                executeQuickAction(action)
+            }
+        }
+        .onAppear {
+            if let action = AppNavigationState.shared.pendingQuickAction {
+                AppNavigationState.shared.pendingQuickAction = nil
+                executeQuickAction(action)
+            }
+        }
+    }
+
+    private func executeQuickAction(_ action: AIQuickAction) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        switch action {
+        case .camera:
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                showCameraCapture = true
+            }
+        case .voice:
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                if !speechService.isRecordingLive {
+                    handleVoiceMemosButtonTap()
+                }
+            }
+        }
     }
 
     // MARK: - 1. Header Section
@@ -209,9 +262,31 @@ struct AIView: View {
 
                     Spacer()
 
-                    Text("On-Device Speech")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color(.tertiaryLabel))
+                    // Interactive Speech Language Toggle
+                    HStack(spacing: 4) {
+                        ForEach(SpeechLanguage.allCases) { lang in
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.snappy(duration: 0.18)) {
+                                    speechService.selectedLanguage = lang
+                                }
+                            } label: {
+                                Text(lang.displayName)
+                                    .font(.system(size: 11, weight: speechService.selectedLanguage == lang ? .bold : .medium))
+                                    .foregroundStyle(speechService.selectedLanguage == lang ? SomaColors.white : Color(.secondaryLabel))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(
+                                        speechService.selectedLanguage == lang
+                                            ? SomaColors.navy
+                                            : Color(.tertiarySystemFill)
+                                    )
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(speechService.isRecordingLive)
+                        }
+                    }
                 }
             }
 
@@ -231,7 +306,9 @@ struct AIView: View {
                 VStack(spacing: 4) {
                     if speechService.isRecordingLive {
                         if speechService.liveTranscribedText.isEmpty {
-                            Text("Listening... Speak what you ate or drank (tap red square to log)")
+                            Text(speechService.selectedLanguage == .arabic
+                                ? "استمع الآن... تحدث عما تناولته أو شربته (اضغط المربع للأكل/الحفظ)"
+                                : "Listening... Speak what you ate or drank (tap red square to log)")
                                 .font(.system(size: 14))
                                 .foregroundStyle(Color(.secondaryLabel))
                                 .italic()
@@ -244,7 +321,9 @@ struct AIView: View {
                                 .animation(.easeOut(duration: 0.15), value: speechService.liveTranscribedText)
                         }
                     } else {
-                        Text("Tap the red record button to speak, or snap a photo of your meal.")
+                        Text(speechService.selectedLanguage == .arabic
+                            ? "اضغط على زر التسجيل وتحدث عن وجبتك، أو التقط صورة لها."
+                            : "Tap the red record button to speak, or snap a photo of your meal.")
                             .font(.system(size: 13))
                             .foregroundStyle(Color(.secondaryLabel))
                     }
@@ -359,14 +438,8 @@ struct AIView: View {
 
     private func deleteJournalEntry(_ entry: AIMealEntry) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        if let relPath = entry.voiceAudioRelativePath {
-            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            try? FileManager.default.removeItem(at: docs.appendingPathComponent(relPath))
-        }
-
         withAnimation(.snappy(duration: 0.25)) {
-            modelContext.delete(entry)
-            try? modelContext.save()
+            entry.deleteWithSyncedEntries(in: modelContext)
         }
         showToast("Deleted \(entry.title.isEmpty ? "meal entry" : entry.title)")
     }
@@ -390,9 +463,12 @@ struct AIView: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             let result = speechService.stopLiveTranscription()
 
-            // Guard against micro-taps (< 0.5s)
-            guard result.duration >= 0.5 else {
-                showToast("Recording too short. Speak and tap to stop.")
+            // Guard against micro-taps (< 0.8s)
+            guard result.duration >= 0.8 else {
+                if let url = result.audioURL {
+                    try? FileManager.default.removeItem(at: url)
+                }
+                showToast(speechService.selectedLanguage == .arabic ? "التسجيل قصير جداً. تحدث بما أكلته ثم أوقف التسجيل." : "Recording too short. Speak and tap to stop.")
                 return
             }
 
@@ -400,84 +476,144 @@ struct AIView: View {
                 ? result.text
                 : speechService.liveTranscribedText
 
+            withAnimation(.snappy(duration: 0.25)) {
+                analyzingType = .voice
+                isAnalyzingAI = true
+            }
+
             Task {
                 // If live transcription is empty, attempt file transcription
-                if effectiveSpeech.isEmpty, let url = result.audioURL {
+                if effectiveSpeech.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let url = result.audioURL {
                     let fileTranscribed = await speechService.transcribeAudioFile(at: url)
-                    if !fileTranscribed.isEmpty {
+                    if !fileTranscribed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         effectiveSpeech = fileTranscribed
                     }
                 }
 
-                if !effectiveSpeech.isEmpty || result.audioURL != nil {
-                    await MainActor.run {
-                        showToast("Analyzing meal with Soma AI...")
+                let trimmedSpeech = effectiveSpeech.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                // Strict speech validation: If no speech was transcribed at all, do NOT create fake logs or contact AI
+                guard !trimmedSpeech.isEmpty else {
+                    if let url = result.audioURL {
+                        try? FileManager.default.removeItem(at: url)
                     }
-
-                    // Parse speech or audio via AI Router (uses Gemini Flash if configured, or FoodNutritionDatabase)
-                    let analysis = await AIRouter.shared.processMultimodalMeal(
-                        notes: nil,
-                        photos: [],
-                        audioURL: result.audioURL,
-                        directTranscription: effectiveSpeech.isEmpty ? nil : effectiveSpeech
-                    )
-
-                    let finalLocation = await resolveMealLocation(from: analysis.location)
-
                     await MainActor.run {
-                        let todayLog = DailyLog.fetchOrCreateToday(context: modelContext)
-
-                        let story = !analysis.storyNarrative.isEmpty
-                            ? analysis.storyNarrative
-                            : (!effectiveSpeech.isEmpty ? effectiveSpeech : analysis.title)
-
-                        let parsedWaterCheck = FoodNutritionDatabase.shared.parseInput(story)
-                        if parsedWaterCheck.isWater {
-                            let water = WaterEntry(amount: parsedWaterCheck.waterML, timestamp: .now, label: "AI Voice Log")
-                            todayLog.waterEntries.append(water)
-                            try? modelContext.save()
-                            UINotificationFeedbackGenerator().notificationOccurred(.success)
-                            showToast(parsedWaterCheck.summary)
-                            return
+                        withAnimation(.snappy(duration: 0.35)) {
+                            isAnalyzingAI = false
                         }
+                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                        showToast(speechService.selectedLanguage == .arabic ? "لم يتم سماع أي كلام. تحدث بما أكلته أو شربته." : "No speech detected. Please speak what you ate or drank.")
+                    }
+                    return
+                }
 
-                        let foodEntry = FoodEntry(
-                            name: analysis.title,
-                            calories: analysis.calories,
-                            proteinG: analysis.proteinG,
-                            carbsG: analysis.carbsG,
-                            fatG: analysis.fatG,
-                            mealType: "Voice Log",
-                            timestamp: .now
+                // Parse speech via AI Router (uses Gemini Flash if configured, or on-device FoodNutritionDatabase)
+                let analysis = await AIRouter.shared.processMultimodalMeal(
+                    notes: trimmedSpeech,
+                    photos: [],
+                    audioURL: result.audioURL,
+                    directTranscription: trimmedSpeech,
+                    alternativeTranscriptions: result.alternatives
+                )
+
+                // Guard against "No Food Detected"
+                guard !analysis.isNoFood, analysis.title != "No Food Detected" else {
+                    if let url = result.audioURL {
+                        try? FileManager.default.removeItem(at: url)
+                    }
+                    await MainActor.run {
+                        withAnimation(.snappy(duration: 0.35)) {
+                            isAnalyzingAI = false
+                        }
+                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                        showToast(speechService.selectedLanguage == .arabic ? "لم يتم التعرف على طعام أو شراب. برجاء المحاولة مرة أخرى." : "No food or drink detected. Please try again.")
+                    }
+                    return
+                }
+
+                let finalLocation = await resolveMealLocation(from: analysis.location)
+
+                await MainActor.run {
+                    let todayLog = DailyLog.fetchOrCreateToday(context: modelContext)
+                    let aiEntryId = UUID()
+
+                    let story = !analysis.storyNarrative.isEmpty
+                        ? analysis.storyNarrative
+                        : (!trimmedSpeech.isEmpty ? trimmedSpeech : analysis.title)
+
+                    let parsedWaterCheck = FoodNutritionDatabase.shared.parseInput(story)
+                    if parsedWaterCheck.isWater {
+                        let water = WaterEntry(
+                            amount: parsedWaterCheck.waterML,
+                            timestamp: .now,
+                            label: "AI Voice Log",
+                            aiMealEntryId: aiEntryId
                         )
-                        todayLog.foodEntries.append(foodEntry)
+                        todayLog.waterEntries.append(water)
 
                         let aiEntry = AIMealEntry(
-                            title: analysis.title,
+                            id: aiEntryId,
+                            title: "Hydration (\(parsedWaterCheck.waterML) ml)",
                             location: finalLocation,
                             storyText: story,
-                            calories: analysis.calories,
-                            proteinG: analysis.proteinG,
-                            carbsG: analysis.carbsG,
-                            fatG: analysis.fatG,
+                            calories: 0,
+                            proteinG: 0,
+                            carbsG: 0,
+                            fatG: 0,
                             photoDataList: [],
                             voiceAudioRelativePath: result.relativePath,
                             voiceWaveformSamples: result.samples,
                             voiceDurationSeconds: result.duration,
-                            breakdownNotes: analysis.storyNarrative
+                            breakdownNotes: parsedWaterCheck.summary
                         )
                         aiEntry.dailyLog = todayLog
                         modelContext.insert(aiEntry)
 
                         try? modelContext.save()
+                        withAnimation(.snappy(duration: 0.35)) {
+                            isAnalyzingAI = false
+                        }
                         UINotificationFeedbackGenerator().notificationOccurred(.success)
-                        showToast("Logged \(analysis.title) · \(analysis.calories) kcal")
-                        selectedEntryForDetail = aiEntry
+                        showToast(parsedWaterCheck.summary)
+                        return
                     }
-                } else {
-                    await MainActor.run {
-                        showToast("No audio detected. Please try speaking again.")
+
+                    let foodEntry = FoodEntry(
+                        name: analysis.title,
+                        calories: analysis.calories,
+                        proteinG: analysis.proteinG,
+                        carbsG: analysis.carbsG,
+                        fatG: analysis.fatG,
+                        mealType: "Voice Log",
+                        timestamp: .now,
+                        aiMealEntryId: aiEntryId
+                    )
+                    todayLog.foodEntries.append(foodEntry)
+
+                    let aiEntry = AIMealEntry(
+                        id: aiEntryId,
+                        title: analysis.title,
+                        location: finalLocation,
+                        storyText: story,
+                        calories: analysis.calories,
+                        proteinG: analysis.proteinG,
+                        carbsG: analysis.carbsG,
+                        fatG: analysis.fatG,
+                        photoDataList: [],
+                        voiceAudioRelativePath: result.relativePath,
+                        voiceWaveformSamples: result.samples,
+                        voiceDurationSeconds: result.duration,
+                        breakdownNotes: analysis.storyNarrative
+                    )
+                    aiEntry.dailyLog = todayLog
+                    modelContext.insert(aiEntry)
+
+                    try? modelContext.save()
+                    withAnimation(.snappy(duration: 0.35)) {
+                        isAnalyzingAI = false
                     }
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    showToast("Logged \(analysis.title) · \(analysis.calories) kcal")
                 }
             }
 
@@ -523,6 +659,11 @@ struct AIView: View {
         inputText = ""
         isInputFocused = false
 
+        withAnimation(.snappy(duration: 0.25)) {
+            analyzingType = .text
+            isAnalyzingAI = true
+        }
+
         Task {
             let analysis = await AIRouter.shared.processMultimodalMeal(
                 notes: query,
@@ -530,16 +671,56 @@ struct AIView: View {
                 audioURL: nil
             )
 
+            // Guard against non-food text inputs
+            guard !analysis.isNoFood, analysis.title != "No Food Detected" else {
+                await MainActor.run {
+                    withAnimation(.snappy(duration: 0.35)) {
+                        isAnalyzingAI = false
+                    }
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    showToast(speechService.selectedLanguage == .arabic ? "لم يتم التعرف على طعام أو شراب في النص." : "No food or drink recognized in text.")
+                }
+                return
+            }
+
             let finalLocation = await resolveMealLocation(from: analysis.location)
 
             await MainActor.run {
                 let todayLog = DailyLog.fetchOrCreateToday(context: modelContext)
+                let aiEntryId = UUID()
 
                 let parsedWaterCheck = FoodNutritionDatabase.shared.parseInput(query)
                 if parsedWaterCheck.isWater {
-                    let water = WaterEntry(amount: parsedWaterCheck.waterML, timestamp: .now, label: "AI Log")
+                    let water = WaterEntry(
+                        amount: parsedWaterCheck.waterML,
+                        timestamp: .now,
+                        label: "AI Log",
+                        aiMealEntryId: aiEntryId
+                    )
                     todayLog.waterEntries.append(water)
+
+                    let aiEntry = AIMealEntry(
+                        id: aiEntryId,
+                        title: "Hydration (\(parsedWaterCheck.waterML) ml)",
+                        location: finalLocation,
+                        storyText: query,
+                        calories: 0,
+                        proteinG: 0,
+                        carbsG: 0,
+                        fatG: 0,
+                        photoDataList: [],
+                        voiceAudioRelativePath: nil,
+                        voiceWaveformSamples: [],
+                        voiceDurationSeconds: 0.0,
+                        breakdownNotes: parsedWaterCheck.summary
+                    )
+                    aiEntry.dailyLog = todayLog
+                    modelContext.insert(aiEntry)
+
                     try? modelContext.save()
+                    withAnimation(.snappy(duration: 0.35)) {
+                        isAnalyzingAI = false
+                    }
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                     showToast(parsedWaterCheck.summary)
                     return
@@ -552,11 +733,13 @@ struct AIView: View {
                     carbsG: analysis.carbsG,
                     fatG: analysis.fatG,
                     mealType: "AI Log",
-                    timestamp: .now
+                    timestamp: .now,
+                    aiMealEntryId: aiEntryId
                 )
                 todayLog.foodEntries.append(foodEntry)
 
                 let aiEntry = AIMealEntry(
+                    id: aiEntryId,
                     title: analysis.title,
                     location: finalLocation,
                     storyText: query,
@@ -574,6 +757,9 @@ struct AIView: View {
                 modelContext.insert(aiEntry)
 
                 try? modelContext.save()
+                withAnimation(.snappy(duration: 0.35)) {
+                    isAnalyzingAI = false
+                }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 showToast("Logged \(analysis.title) · \(analysis.calories) kcal")
             }
@@ -584,7 +770,10 @@ struct AIView: View {
         capturedImage = nil
         guard let jpegData = image.jpegData(compressionQuality: 0.82) else { return }
 
-        showToast("Analyzing meal photo...")
+        withAnimation(.snappy(duration: 0.25)) {
+            analyzingType = .photo
+            isAnalyzingAI = true
+        }
 
         Task {
             let analysis = await AIRouter.shared.processMultimodalMeal(
@@ -593,10 +782,23 @@ struct AIView: View {
                 audioURL: nil
             )
 
+            // Guard against non-food photos (e.g. pets, objects, landscapes)
+            guard !analysis.isNoFood, analysis.title != "No Food Detected" else {
+                await MainActor.run {
+                    withAnimation(.snappy(duration: 0.35)) {
+                        isAnalyzingAI = false
+                    }
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    showToast(speechService.selectedLanguage == .arabic ? "لم يتم التعرف على طعام في الصورة." : "No food detected in photo.")
+                }
+                return
+            }
+
             let finalLocation = await resolveMealLocation(from: analysis.location)
 
             await MainActor.run {
                 let todayLog = DailyLog.fetchOrCreateToday(context: modelContext)
+                let aiEntryId = UUID()
 
                 let foodEntry = FoodEntry(
                     name: analysis.title,
@@ -605,11 +807,13 @@ struct AIView: View {
                     carbsG: analysis.carbsG,
                     fatG: analysis.fatG,
                     mealType: "Photo Log",
-                    timestamp: .now
+                    timestamp: .now,
+                    aiMealEntryId: aiEntryId
                 )
                 todayLog.foodEntries.append(foodEntry)
 
                 let aiEntry = AIMealEntry(
+                    id: aiEntryId,
                     title: analysis.title,
                     location: finalLocation,
                     storyText: analysis.storyNarrative,
@@ -627,10 +831,11 @@ struct AIView: View {
                 modelContext.insert(aiEntry)
 
                 try? modelContext.save()
+                withAnimation(.snappy(duration: 0.35)) {
+                    isAnalyzingAI = false
+                }
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 showToast("Logged \(analysis.title) · \(analysis.calories) kcal")
-
-                selectedEntryForDetail = aiEntry
                 capturedImage = nil
             }
         }
@@ -644,10 +849,35 @@ struct AIView: View {
         photos: [Data]
     ) {
         let todayLog = DailyLog.fetchOrCreateToday(context: modelContext)
+        let aiEntryId = UUID()
 
         if parsed.isWater {
-            let water = WaterEntry(amount: parsed.waterML, timestamp: .now, label: "AI Voice Log")
+            let water = WaterEntry(
+                amount: parsed.waterML,
+                timestamp: .now,
+                label: "AI Voice Log",
+                aiMealEntryId: aiEntryId
+            )
             todayLog.waterEntries.append(water)
+
+            let aiEntry = AIMealEntry(
+                id: aiEntryId,
+                title: "Hydration (\(parsed.waterML) ml)",
+                location: "Logged with Soma AI",
+                storyText: originalText,
+                calories: 0,
+                proteinG: 0,
+                carbsG: 0,
+                fatG: 0,
+                photoDataList: photos,
+                voiceAudioRelativePath: audioRelativePath,
+                voiceWaveformSamples: waveformSamples,
+                voiceDurationSeconds: audioRelativePath != nil ? Double(waveformSamples.count) * 0.06 : 0.0,
+                breakdownNotes: parsed.summary
+            )
+            aiEntry.dailyLog = todayLog
+            modelContext.insert(aiEntry)
+
             try? modelContext.save()
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             showToast("Logged \(parsed.waterML) ml of water")
@@ -662,12 +892,14 @@ struct AIView: View {
             carbsG: parsed.carbsG,
             fatG: parsed.fatG,
             mealType: "AI Log",
-            timestamp: .now
+            timestamp: .now,
+            aiMealEntryId: aiEntryId
         )
         todayLog.foodEntries.append(foodEntry)
 
         // 2. AI Meal Entry for the Editorial Screen
         let aiEntry = AIMealEntry(
+            id: aiEntryId,
             title: parsed.title,
             location: "Logged with Soma AI",
             storyText: originalText,
@@ -730,6 +962,178 @@ struct AIView: View {
                 )
         )
         .padding(.top, 10)
+    }
+}
+
+// MARK: - AI Analysis Mode
+
+enum AIAnalysisType {
+    case text
+    case voice
+    case photo
+
+    var title: String {
+        switch self {
+        case .text: return "Analyzing Meal Notes..."
+        case .voice: return "Transcribing Voice Memo..."
+        case .photo: return "Analyzing Meal Photo..."
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .text: return "Estimating ingredients, portions & macros"
+        case .voice: return "Extracting nutritional breakdown & context"
+        case .photo: return "Identifying items, portions & calories"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .text: return "sparkles"
+        case .voice: return "waveform"
+        case .photo: return "camera.viewfinder"
+        }
+    }
+}
+
+// MARK: - Soma-Themed AI Loading Animation Card
+
+struct AILoadingCardView: View {
+    let analysisType: AIAnalysisType
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                BreathingIconBadge(systemImage: analysisType.systemImage)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(analysisType.title)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Color(.label))
+
+                        Text("SOMA AI")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(SomaColors.navy)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(SomaColors.navy.opacity(0.1))
+                            .clipShape(Capsule())
+                    }
+
+                    Text(analysisType.subtitle)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color(.secondaryLabel))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+
+                BouncingDotsView()
+                    .padding(.trailing, 4)
+            }
+
+            ShimmerProgressBar()
+                .padding(.top, 2)
+        }
+        .padding(14)
+        .background(SomaColors.white)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(SomaColors.navy.opacity(0.08), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.03), radius: 8, x: 0, y: 3)
+    }
+}
+
+private struct BreathingIconBadge: View {
+    let systemImage: String
+    @State private var isPulsing = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(SomaColors.navy.opacity(0.08))
+                .frame(width: 44, height: 44)
+
+            Circle()
+                .stroke(SomaColors.navy.opacity(0.18), lineWidth: 1.5)
+                .frame(width: 44, height: 44)
+                .scaleEffect(isPulsing ? 1.15 : 1.0)
+                .opacity(isPulsing ? 0.0 : 0.7)
+
+            Image(systemName: systemImage)
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(SomaColors.navy)
+                .scaleEffect(isPulsing ? 1.06 : 0.94)
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                isPulsing = true
+            }
+        }
+    }
+}
+
+private struct BouncingDotsView: View {
+    @State private var isAnimating = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<3) { index in
+                Circle()
+                    .fill(SomaColors.navy)
+                    .frame(width: 6, height: 6)
+                    .scaleEffect(isAnimating ? 1.25 : 0.75)
+                    .opacity(isAnimating ? 1.0 : 0.3)
+                    .animation(
+                        .easeInOut(duration: 0.5)
+                        .repeatForever(autoreverses: true)
+                        .delay(Double(index) * 0.16),
+                        value: isAnimating
+                    )
+            }
+        }
+        .onAppear {
+            isAnimating = true
+        }
+    }
+}
+
+private struct ShimmerProgressBar: View {
+    @State private var shimmerPhase: CGFloat = -1.0
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color(.tertiarySystemFill).opacity(0.7))
+                    .frame(height: 3)
+
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                SomaColors.navy.opacity(0.08),
+                                SomaColors.navy.opacity(0.85),
+                                SomaColors.navy.opacity(0.08)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: geo.size.width * 0.4, height: 3)
+                    .offset(x: max(0, min(geo.size.width * 0.6, (shimmerPhase + 1.0) / 2.0 * geo.size.width * 0.6)))
+            }
+        }
+        .frame(height: 3)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) {
+                shimmerPhase = 1.0
+            }
+        }
     }
 }
 

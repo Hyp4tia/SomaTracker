@@ -73,6 +73,19 @@ final class AIMealEntry {
     @discardableResult
     func syncToFoodEntry(in context: ModelContext) -> FoodEntry {
         let log = dailyLog ?? DailyLog.fetchOrCreateToday(context: context)
+        // If an entry already exists for this AI meal, update it instead of duplicating
+        if let existing = log.foodEntries.first(where: { $0.aiMealEntryId == self.id }) {
+            existing.name = title.isEmpty ? "AI Meal" : title
+            existing.calories = calories
+            existing.proteinG = proteinG
+            existing.carbsG = carbsG
+            existing.fatG = fatG
+            existing.timestamp = timestamp
+            self.dailyLog = log
+            try? context.save()
+            return existing
+        }
+
         let entry = FoodEntry(
             name: title.isEmpty ? "AI Meal" : title,
             calories: calories,
@@ -80,11 +93,68 @@ final class AIMealEntry {
             carbsG: carbsG,
             fatG: fatG,
             mealType: "AI Log",
-            timestamp: timestamp
+            timestamp: timestamp,
+            aiMealEntryId: self.id
         )
         log.foodEntries.append(entry)
         self.dailyLog = log
         try? context.save()
         return entry
+    }
+}
+
+extension AIMealEntry {
+    /// Deletes the AI meal entry, cleans up the on-disk voice audio file,
+    /// and deletes any linked FoodEntry or WaterEntry in DailyLog.
+    func deleteWithSyncedEntries(in context: ModelContext) {
+        // 1. Remove voice audio file from disk
+        if let relPath = voiceAudioRelativePath {
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            try? FileManager.default.removeItem(at: docs.appendingPathComponent(relPath))
+        }
+
+        let currentId = self.id
+        let mealTimestamp = self.timestamp
+        let mealCalories = self.calories
+        let mealTitle = self.title
+
+        // 2. Locate and delete corresponding FoodEntry from DailyLog
+        let foodDescriptor = FetchDescriptor<FoodEntry>()
+        if let foods = try? context.fetch(foodDescriptor) {
+            for food in foods {
+                let isMatchById = (food.aiMealEntryId == currentId)
+                let isMatchByHeuristic = (food.aiMealEntryId == nil) &&
+                    (food.mealType.contains("AI") || food.mealType.contains("Voice") || food.mealType.contains("Photo")) &&
+                    abs(food.timestamp.timeIntervalSince(mealTimestamp)) < 120 &&
+                    food.calories == mealCalories &&
+                    (food.name == mealTitle || mealTitle.contains("AI Meal") || food.name.contains("AI Meal"))
+
+                if isMatchById || isMatchByHeuristic {
+                    food.dailyLog?.foodEntries.removeAll { $0.id == food.id }
+                    context.delete(food)
+                }
+            }
+        }
+
+        // 3. Locate and delete corresponding WaterEntry from DailyLog
+        let waterDescriptor = FetchDescriptor<WaterEntry>()
+        if let waters = try? context.fetch(waterDescriptor) {
+            for water in waters {
+                let isMatchById = (water.aiMealEntryId == currentId)
+                let isMatchByHeuristic = (water.aiMealEntryId == nil) &&
+                    (water.label?.contains("AI") == true) &&
+                    abs(water.timestamp.timeIntervalSince(mealTimestamp)) < 120 &&
+                    (mealTitle.contains("Hydration") || mealTitle.contains("Water"))
+
+                if isMatchById || isMatchByHeuristic {
+                    water.dailyLog?.waterEntries.removeAll { $0.id == water.id }
+                    context.delete(water)
+                }
+            }
+        }
+
+        // 4. Delete the AIMealEntry itself
+        context.delete(self)
+        try? context.save()
     }
 }

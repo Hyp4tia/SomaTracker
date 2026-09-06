@@ -78,6 +78,29 @@ struct AIMealAnalysisResult: Codable {
     let confidence: Double
     let items: [AIFoodItemBreakdown]
 
+    var isNoFood: Bool {
+        let t = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if t == "no food detected" || t == "no food" || t.contains("no food") || t == "لا يوجد طعام" || t.contains("لم يتم التعرف") {
+            return true
+        }
+        if calories == 0 && (items.isEmpty || t.isEmpty) {
+            return true
+        }
+        return false
+    }
+
+    static let noFoodDetected = AIMealAnalysisResult(
+        title: "No Food Detected",
+        location: "",
+        storyNarrative: "",
+        calories: 0,
+        proteinG: 0,
+        carbsG: 0,
+        fatG: 0,
+        confidence: 0.0,
+        items: []
+    )
+
     enum CodingKeys: String, CodingKey {
         case title, location, storyNarrative, calories, proteinG, carbsG, fatG, confidence, items
         case story_narrative, protein_g, carbs_g, fat_g
@@ -177,7 +200,8 @@ protocol AIServiceProtocol {
         photoDataList: [Data],
         audioData: Data?,
         audioMimeType: String?,
-        voiceTranscription: String?
+        voiceTranscription: String?,
+        alternativeTranscriptions: [String]
     ) async throws -> AIMealAnalysisResult
 }
 
@@ -185,14 +209,18 @@ extension AIServiceProtocol {
     func analyze(
         userNotes: String?,
         photoDataList: [Data],
-        voiceTranscription: String?
+        audioData: Data? = nil,
+        audioMimeType: String? = nil,
+        voiceTranscription: String? = nil,
+        alternativeTranscriptions: [String] = []
     ) async throws -> AIMealAnalysisResult {
         try await analyze(
             userNotes: userNotes,
             photoDataList: photoDataList,
-            audioData: nil,
-            audioMimeType: nil,
-            voiceTranscription: voiceTranscription
+            audioData: audioData,
+            audioMimeType: audioMimeType,
+            voiceTranscription: voiceTranscription,
+            alternativeTranscriptions: alternativeTranscriptions
         )
     }
 }

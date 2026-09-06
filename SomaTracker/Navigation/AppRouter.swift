@@ -20,3 +20,27 @@ final class AppRouter {
         self.hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
     }
 }
+
+// MARK: - Action Button & Deep Link Quick Actions
+
+enum AIQuickAction: String, Sendable {
+    case camera
+    case voice
+}
+
+@Observable
+final class AppNavigationState {
+    static let shared = AppNavigationState()
+
+    var pendingQuickAction: AIQuickAction? = nil
+
+    @MainActor
+    func triggerAction(_ action: AIQuickAction) {
+        self.pendingQuickAction = action
+        NotificationCenter.default.post(name: .somaTriggerQuickAction, object: action)
+    }
+}
+
+extension Notification.Name {
+    static let somaTriggerQuickAction = Notification.Name("somaTriggerQuickAction")
+}

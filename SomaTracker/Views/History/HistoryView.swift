@@ -757,18 +757,14 @@ struct HistoryView: View {
     private func deleteFoodEntry(_ entry: FoodEntry, from log: DailyLog?) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         withAnimation(.snappy) {
-            log?.foodEntries.removeAll { $0.id == entry.id }
-            modelContext.delete(entry)
-            try? modelContext.save()
+            entry.deleteWithSyncedAIEntry(from: log, in: modelContext)
         }
     }
 
     private func deleteWaterEntry(_ entry: WaterEntry, from log: DailyLog?) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         withAnimation(.snappy) {
-            log?.waterEntries.removeAll { $0.id == entry.id }
-            modelContext.delete(entry)
-            try? modelContext.save()
+            entry.deleteWithSyncedAIEntry(from: log, in: modelContext)
         }
     }
 }

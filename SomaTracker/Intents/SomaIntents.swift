@@ -12,10 +12,18 @@ import Foundation
 
 struct LogWaterAppIntent: AppIntent {
     static var title: LocalizedStringResource = "Log Water in Soma"
-    static var description = IntentDescription("Log water intake into Soma (e.g. 'log 100 water' means 100 ml).")
+    static var description = IntentDescription("Log water intake into Soma (e.g. 'log 50 water' or 'log 500 ml water').")
 
-    @Parameter(title: "Amount", default: 250)
+    @Parameter(
+        title: "Amount",
+        description: "The amount of water in milliliters (e.g. 50, 100, 250, 500)",
+        requestValueDialog: IntentDialog("How many milliliters of water did you drink?")
+    )
     var amount: Int
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Log \(\.$amount) ml of water")
+    }
 
     static var openAppWhenRun: Bool = false
 
@@ -27,10 +35,26 @@ struct LogWaterAppIntent: AppIntent {
         }
         let context = container.mainContext
         let todayLog = DailyLog.fetchOrCreateToday(context: context)
+        let aiEntryId = UUID()
 
         let targetML = max(1, amount)
-        let entry = WaterEntry(amount: targetML, timestamp: .now, label: "Siri AI")
+        let entry = WaterEntry(amount: targetML, timestamp: .now, label: "Siri AI", aiMealEntryId: aiEntryId)
         todayLog.waterEntries.append(entry)
+
+        let aiEntry = AIMealEntry(
+            id: aiEntryId,
+            title: "Hydration (\(targetML) ml)",
+            location: "Logged via Siri AI",
+            storyText: "Voice logged via Siri: \(targetML) ml water.",
+            calories: 0,
+            proteinG: 0,
+            carbsG: 0,
+            fatG: 0,
+            breakdownNotes: "Logged \(targetML) ml of water via Siri."
+        )
+        aiEntry.dailyLog = todayLog
+        context.insert(aiEntry)
+
         try? context.save()
 
         return .result(
@@ -44,8 +68,16 @@ struct LogMealAppIntent: AppIntent {
     static var title: LocalizedStringResource = "Log Food & Nutrition in Soma"
     static var description = IntentDescription("Log any meal, calories, or protein using natural speech (e.g. 'log a Big Mac', 'log 500 calories', 'log 40 protein').")
 
-    @Parameter(title: "Food or Nutrition Description")
+    @Parameter(
+        title: "Food or Nutrition Description",
+        description: "Description of what you ate or drank",
+        requestValueDialog: IntentDialog("What did you eat or drink?")
+    )
     var item: String
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Log \(\.$item)")
+    }
 
     static var openAppWhenRun: Bool = false
 
@@ -57,12 +89,28 @@ struct LogMealAppIntent: AppIntent {
         }
         let context = container.mainContext
         let todayLog = DailyLog.fetchOrCreateToday(context: context)
+        let aiEntryId = UUID()
 
-        // 1. First check if user is logging water: "log 100 water", "سجل ١٠٠ مية"
+        // 1. First check if user is logging water: "log 100 water", "50 water", "سجل ١٠٠ مية"
         let waterCheck = FoodNutritionDatabase.shared.parseInput(item)
         if waterCheck.isWater {
-            let waterEntry = WaterEntry(amount: waterCheck.waterML, timestamp: .now, label: "Siri AI")
+            let waterEntry = WaterEntry(amount: waterCheck.waterML, timestamp: .now, label: "Siri AI", aiMealEntryId: aiEntryId)
             todayLog.waterEntries.append(waterEntry)
+
+            let aiEntry = AIMealEntry(
+                id: aiEntryId,
+                title: "Hydration (\(waterCheck.waterML) ml)",
+                location: "Logged via Siri AI",
+                storyText: "Captured via Siri: \"\(item)\".",
+                calories: 0,
+                proteinG: 0,
+                carbsG: 0,
+                fatG: 0,
+                breakdownNotes: waterCheck.summary
+            )
+            aiEntry.dailyLog = todayLog
+            context.insert(aiEntry)
+
             try? context.save()
             return .result(
                 value: "Logged \(waterCheck.waterML) ml",
@@ -85,12 +133,14 @@ struct LogMealAppIntent: AppIntent {
             carbsG: analysis.carbsG,
             fatG: analysis.fatG,
             mealType: "Siri AI",
-            timestamp: .now
+            timestamp: .now,
+            aiMealEntryId: aiEntryId
         )
         todayLog.foodEntries.append(foodEntry)
 
         // 4. Also create an AIMealEntry so it surfaces in the AI Journal
         let aiEntry = AIMealEntry(
+            id: aiEntryId,
             title: analysis.title,
             location: "Logged via Siri AI",
             storyText: "Quickly captured via Siri: \"\(item)\".",
@@ -109,5 +159,31 @@ struct LogMealAppIntent: AppIntent {
             value: "Logged \(analysis.title)",
             dialog: "Logged \(analysis.title) with \(analysis.calories) kcal and \(Int(analysis.proteinG))g protein in Soma."
         )
+    }
+}
+
+// MARK: - Action Button & Instant Launch Intents
+
+struct SnapMealPhotoAppIntent: AppIntent {
+    static var title: LocalizedStringResource = "Snap Meal Photo with AI"
+    static var description = IntentDescription("Launches Soma directly into the AI camera to photograph and analyze your meal.")
+    static var openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        AppNavigationState.shared.triggerAction(.camera)
+        return .result()
+    }
+}
+
+struct RecordVoiceMealAppIntent: AppIntent {
+    static var title: LocalizedStringResource = "Record Voice Meal with AI"
+    static var description = IntentDescription("Launches Soma and instantly starts recording your voice memo meal log.")
+    static var openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        AppNavigationState.shared.triggerAction(.voice)
+        return .result()
     }
 }

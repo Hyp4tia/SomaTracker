@@ -12,6 +12,7 @@ final class WaterEntry {
     var timestamp: Date
     var label: String?
     var dailyLog: DailyLog?
+    var aiMealEntryId: UUID? = nil
 
     var resolvedTitle: String {
         if let customLabel = label?.trimmingCharacters(in: .whitespacesAndNewlines), !customLabel.isEmpty {
@@ -32,9 +33,42 @@ final class WaterEntry {
         }
     }
 
-    init(amount: Int, timestamp: Date = .now, label: String? = nil) {
+    init(amount: Int, timestamp: Date = .now, label: String? = nil, aiMealEntryId: UUID? = nil) {
         self.amount = amount
         self.timestamp = timestamp
         self.label = label
+        self.aiMealEntryId = aiMealEntryId
+    }
+}
+
+extension WaterEntry {
+    /// Deletes the water entry from its daily log and cleans up any linked AIMealEntry & audio file.
+    func deleteWithSyncedAIEntry(from log: DailyLog?, in context: ModelContext) {
+        log?.waterEntries.removeAll { $0.id == self.id }
+
+        let targetAiId = self.aiMealEntryId
+        let entryTime = self.timestamp
+
+        let descriptor = FetchDescriptor<AIMealEntry>()
+        if let aiEntries = try? context.fetch(descriptor) {
+            for aiMeal in aiEntries {
+                let isMatchById = (targetAiId != nil && aiMeal.id == targetAiId)
+                let isMatchByHeuristic = targetAiId == nil &&
+                    (self.label?.contains("AI") == true) &&
+                    abs(aiMeal.timestamp.timeIntervalSince(entryTime)) < 120 &&
+                    (aiMeal.title.contains("Hydration") || aiMeal.title.contains("Water"))
+
+                if isMatchById || isMatchByHeuristic {
+                    if let relPath = aiMeal.voiceAudioRelativePath {
+                        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                        try? FileManager.default.removeItem(at: docs.appendingPathComponent(relPath))
+                    }
+                    context.delete(aiMeal)
+                }
+            }
+        }
+
+        context.delete(self)
+        try? context.save()
     }
 }

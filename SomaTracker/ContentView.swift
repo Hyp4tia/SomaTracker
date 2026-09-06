@@ -49,8 +49,36 @@ struct ContentView: View {
         }
         .environment(appRouter)
         .environment(tabRouter)
+        .onReceive(NotificationCenter.default.publisher(for: .somaTriggerQuickAction)) { _ in
+            withAnimation(.snappy(duration: 0.2)) {
+                tabRouter.selectedTab = .ai
+            }
+        }
+        .onOpenURL { url in
+            handleIncomingURL(url)
+        }
+        .onAppear {
+            if AppNavigationState.shared.pendingQuickAction != nil {
+                tabRouter.selectedTab = .ai
+            }
+        }
     }
 
+    private func handleIncomingURL(_ url: URL) {
+        guard url.scheme?.lowercased() == "somatracker" || url.scheme?.lowercased() == "soma" else { return }
+        let host = url.host?.lowercased() ?? ""
+        let path = url.path.lowercased()
+
+        if host == "camera" || path.contains("camera") {
+            tabRouter.selectedTab = .ai
+            AppNavigationState.shared.triggerAction(.camera)
+        } else if host == "voice" || path.contains("voice") {
+            tabRouter.selectedTab = .ai
+            AppNavigationState.shared.triggerAction(.voice)
+        } else if host == "ai" || path.contains("ai") {
+            tabRouter.selectedTab = .ai
+        }
+    }
 }
 
 #Preview {

@@ -6,18 +6,49 @@
 //
 
 import Foundation
-import Speech
+@preconcurrency import Speech
 import AVFoundation
 import Observation
+
+// MARK: - Supported Speech Languages
+
+enum SpeechLanguage: String, CaseIterable, Identifiable {
+    case arabic = "ar-SA"
+    case english = "en-US"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .arabic: return "🇪🇬 عربي"
+        case .english: return "🇺🇸 English"
+        }
+    }
+
+    var shortName: String {
+        switch self {
+        case .arabic: return "عربي"
+        case .english: return "English"
+        }
+    }
+}
 
 @Observable
 final class SpeechRecognitionService: NSObject, AVAudioRecorderDelegate {
     var isRecordingLive = false
     var liveTranscribedText = ""
+    var alternativeTranscriptions: [String] = []
     var liveWaveformLevels: [Float] = Array(repeating: 0.18, count: 32)
     var currentAudioPower: Float = 0.18
     var recordingDuration: TimeInterval = 0
     var lastErrorMessage: String? = nil
+
+    /// User-selected or auto-detected speech language (persisted across sessions)
+    var selectedLanguage: SpeechLanguage {
+        didSet {
+            UserDefaults.standard.set(selectedLanguage.rawValue, forKey: "soma_speech_language")
+        }
+    }
 
     // Private Audio Engine Components
     private var audioEngine: AVAudioEngine?
@@ -34,40 +65,49 @@ final class SpeechRecognitionService: NSObject, AVAudioRecorderDelegate {
     private var animationPhase: Double = 0
 
     override init() {
+        if let saved = UserDefaults.standard.string(forKey: "soma_speech_language"),
+           let lang = SpeechLanguage(rawValue: saved) {
+            self.selectedLanguage = lang
+        } else {
+            let preferred = Locale.preferredLanguages
+            let hasArabic = preferred.contains(where: { $0.hasPrefix("ar") }) ||
+                            Locale.current.identifier.hasPrefix("ar") ||
+                            Locale.current.region?.identifier == "EG" ||
+                            Locale.current.identifier.contains("EG")
+            self.selectedLanguage = hasArabic ? .arabic : .english
+        }
         super.init()
     }
 
     // MARK: - Smart Locale-Aware Speech Recognizer
 
     private var speechRecognizer: SFSpeechRecognizer? {
-        // 1. If user has Arabic in preferred languages or locale, prioritize Arabic recognizers
-        let preferred = Locale.preferredLanguages
-        if let arLang = preferred.first(where: { $0.hasPrefix("ar") }) {
-            if let rec = SFSpeechRecognizer(locale: Locale(identifier: arLang)), rec.isAvailable {
+        // 1. Prioritize user selected language (ar-SA for Arabic/Egyptian, en-US for English)
+        let primaryLocale = Locale(identifier: selectedLanguage.rawValue)
+        if let rec = SFSpeechRecognizer(locale: primaryLocale), rec.isAvailable {
+            return rec
+        }
+
+        // 2. If Arabic was selected, look for any supported Arabic locale in Apple Speech
+        if selectedLanguage == .arabic {
+            let supported = SFSpeechRecognizer.supportedLocales()
+            if let ar = supported.first(where: { $0.identifier.hasPrefix("ar") }),
+               let rec = SFSpeechRecognizer(locale: ar), rec.isAvailable {
                 return rec
             }
         }
-        if Locale.current.identifier.hasPrefix("ar") {
-            if let rec = SFSpeechRecognizer(locale: Locale(identifier: "ar-EG")), rec.isAvailable {
-                return rec
-            }
-            if let rec = SFSpeechRecognizer(locale: Locale(identifier: "ar-SA")), rec.isAvailable {
-                return rec
-            }
-        }
-        // 2. Try device's preferred current locale
+
+        // 3. Try device current locale
         if let rec = SFSpeechRecognizer(locale: Locale.current), rec.isAvailable {
             return rec
         }
-        // 3. Try autoupdating current
-        if let rec = SFSpeechRecognizer(locale: Locale.autoupdatingCurrent), rec.isAvailable {
-            return rec
-        }
+
         // 4. Try en-US
         if let rec = SFSpeechRecognizer(locale: Locale(identifier: "en-US")), rec.isAvailable {
             return rec
         }
-        // 5. Any default recognizer configured by iOS
+
+        // 5. Default system recognizer configured by iOS
         return SFSpeechRecognizer()
     }
 
@@ -156,10 +196,10 @@ final class SpeechRecognitionService: NSObject, AVAudioRecorderDelegate {
         print("[SpeechRecognitionService] Running in Simulator: using rock-solid fallback recorder directly.")
         return startFallbackAudioRecorder()
         #else
-        // 1. Activate Audio Session in default recording mode
+        // 1. Activate Audio Session in speech-optimized mode (.spokenAudio provides hardware AGC and vocal dynamic compression)
         let audioSession = AVAudioSession.sharedInstance()
         do {
-            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothHFP])
+            try audioSession.setCategory(.playAndRecord, mode: .spokenAudio, options: [.defaultToSpeaker, .allowBluetoothHFP])
             try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
         } catch {
             print("[SpeechRecognitionService] Audio session error: \(error.localizedDescription)")
@@ -184,38 +224,43 @@ final class SpeechRecognitionService: NSObject, AVAudioRecorderDelegate {
             return startFallbackAudioRecorder()
         }
 
-        // 4. Create destination audio file (.wav format for universal PCM compatibility)
+        // 4. Create destination audio file (.wav format matching input format exactly)
         let fileName = "voice_memo_\(UUID().uuidString).wav"
         let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let fileURL = documentsDirectory.appendingPathComponent(fileName)
         self.currentRecordedURL = fileURL
 
         do {
-            let settings: [String: Any] = [
-                AVFormatIDKey: Int(kAudioFormatLinearPCM),
-                AVSampleRateKey: recordingFormat.sampleRate,
-                AVNumberOfChannelsKey: recordingFormat.channelCount,
-                AVLinearPCMBitDepthKey: 16,
-                AVLinearPCMIsFloatKey: false,
-                AVLinearPCMIsBigEndianKey: false
-            ]
-            self.recordedAudioFile = try AVAudioFile(forWriting: fileURL, settings: settings)
+            self.recordedAudioFile = try AVAudioFile(forWriting: fileURL, settings: recordingFormat.settings)
         } catch {
             print("[SpeechRecognitionService] AVAudioFile init error: \(error.localizedDescription). Falling back to recorder.")
             return startFallbackAudioRecorder()
         }
 
-        // 5. Setup Recognition Request
+        // 5. Setup Recognition Request with Dietary Domain Context & High-Speed Dictation Optimization
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
+        request.taskHint = .dictation
+        if #available(iOS 16.0, *) {
+            request.addsPunctuation = true
+        }
+
+        // Universal measurement and nutrition hints (avoids biasing silence into specific food names)
+        request.contextualStrings = [
+            "جرام", "كالوري", "سعرة", "سعرات", "بروتين", "كارب", "دهون", "لتر", "مل", "شربت", "أكلت",
+            "grams", "calories", "kcal", "protein", "carbs", "fat", "water", "liter", "ml", "drank", "ate"
+        ]
         self.recognitionRequest = request
 
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self = self else { return }
 
             if let result = result {
+                let best = result.bestTranscription.formattedString
+                let alts = result.transcriptions.dropFirst().prefix(3).map { $0.formattedString }
                 DispatchQueue.main.async {
-                    self.liveTranscribedText = result.bestTranscription.formattedString
+                    self.liveTranscribedText = best
+                    self.alternativeTranscriptions = alts
                 }
             }
 
@@ -263,6 +308,7 @@ final class SpeechRecognitionService: NSObject, AVAudioRecorderDelegate {
             try engine.start()
             isRecordingLive = true
             liveTranscribedText = ""
+            alternativeTranscriptions = []
             recordingDuration = 0
             liveWaveformLevels = Array(repeating: 0.18, count: 32)
             startRollingTimer()
@@ -328,12 +374,13 @@ final class SpeechRecognitionService: NSObject, AVAudioRecorderDelegate {
     // MARK: - Stop & Transcription
 
     @discardableResult
-    func stopLiveTranscription() -> (text: String, audioURL: URL?, relativePath: String?, samples: [Float], duration: TimeInterval) {
+    func stopLiveTranscription() -> (text: String, audioURL: URL?, relativePath: String?, samples: [Float], duration: TimeInterval, alternatives: [String]) {
         let text = liveTranscribedText
         let url = currentRecordedURL
         let relativePath = url?.lastPathComponent
         let duration = recordingDuration
         let finalSamples = liveWaveformLevels
+        let alts = alternativeTranscriptions
 
         if isUsingFallbackRecorder {
             fallbackRecorder?.stop()
@@ -341,12 +388,14 @@ final class SpeechRecognitionService: NSObject, AVAudioRecorderDelegate {
             isUsingFallbackRecorder = false
         }
 
+        // Close and flush the audio file before returning
+        recordedAudioFile = nil
+
         stopEngineOnly()
         isRecordingLive = false
 
         currentRecordedURL = nil
-        recordedAudioFile = nil
-        return (text, url, relativePath, finalSamples, duration)
+        return (text, url, relativePath, finalSamples, duration, alts)
     }
 
     private func stopEngineOnly() {
@@ -404,20 +453,36 @@ final class SpeechRecognitionService: NSObject, AVAudioRecorderDelegate {
         }
 
         let request = SFSpeechURLRecognitionRequest(url: url)
-        do {
-            let result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SFSpeechRecognitionResult, Error>) in
-                recognizer.recognitionTask(with: request) { result, error in
-                    if let error = error {
-                        continuation.resume(throwing: error)
-                    } else if let result = result, result.isFinal {
-                        continuation.resume(returning: result)
-                    }
+        request.taskHint = .dictation
+        request.shouldReportPartialResults = false
+
+        return await withCheckedContinuation { continuation in
+            var hasResumed = false
+            let lock = NSLock()
+
+            func resumeOnce(with text: String) {
+                lock.lock()
+                defer { lock.unlock() }
+                if !hasResumed {
+                    hasResumed = true
+                    continuation.resume(returning: text)
                 }
             }
-            return result.bestTranscription.formattedString
-        } catch {
-            print("[SpeechRecognitionService] File transcription notice: \(error.localizedDescription)")
-            return ""
+
+            let task = recognizer.recognitionTask(with: request) { result, error in
+                if let error = error {
+                    print("[SpeechRecognitionService] File transcription notice: \(error.localizedDescription)")
+                    resumeOnce(with: result?.bestTranscription.formattedString ?? "")
+                } else if let result = result, result.isFinal {
+                    resumeOnce(with: result.bestTranscription.formattedString)
+                }
+            }
+
+            // Safety timeout: 8 seconds maximum for offline audio file recognition
+            DispatchQueue.global().asyncAfter(deadline: .now() + 8.0) {
+                task.cancel()
+                resumeOnce(with: "")
+            }
         }
         #endif
     }
