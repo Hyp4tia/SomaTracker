@@ -33,15 +33,15 @@ struct SomaPaywallView: View {
 
         var priceDescription: String {
             switch self {
-            case .yearly: return "$29.99 / year"
-            case .monthly: return "$4.99 / month"
-            case .weekly: return "$1.99 / week"
+            case .yearly: return "$29.99 / yr"
+            case .monthly: return "$4.99 / mo"
+            case .weekly: return "$1.99 / wk"
             }
         }
 
         var subDescription: String {
             switch self {
-            case .yearly: return "Billed annually ($2.50 / mo)"
+            case .yearly: return "$2.50 / mo · Billed annually"
             case .monthly: return "Flexible monthly billing"
             case .weekly: return "Billed weekly"
             }
@@ -269,25 +269,26 @@ struct SomaPaywallView: View {
                 selectedPlan = plan
             }
         } label: {
-            HStack(spacing: 14) {
+            HStack(spacing: 12) {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 22, weight: .medium))
                     .foregroundColor(isSelected ? SomaColors.navy : Color(uiColor: .systemGray4))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 6) {
                         Text(plan.title)
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(SomaColors.navy)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.85)
 
                         if let badge = plan.badgeText {
                             Text(badge)
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundColor(.white)
                                 .lineLimit(1)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2.5)
                                 .background(
                                     Capsule()
                                         .fill(SomaColors.navy)
@@ -299,13 +300,16 @@ struct SomaPaywallView: View {
                         .font(.system(size: 12, weight: .regular))
                         .foregroundColor(SomaColors.subtext)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
+                .layoutPriority(1)
 
-                Spacer()
+                Spacer(minLength: 8)
 
                 Text(planPriceDisplay(for: plan))
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundColor(SomaColors.navy)
+                    .lineLimit(1)
             }
             .padding(16)
             .background(
