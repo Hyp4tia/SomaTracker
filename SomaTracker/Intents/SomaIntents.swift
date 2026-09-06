@@ -74,7 +74,7 @@ struct LogWaterAppIntent: AppIntent {
 
 struct LogMealAppIntent: AppIntent {
     static var title: LocalizedStringResource = "Log Food & Nutrition in Soma"
-    static var description = IntentDescription("Log any meal, calories, or protein using natural speech (e.g. 'log a Big Mac', 'log 500 calories', 'log 40 protein').")
+    static var description = IntentDescription("Log any meal, calories, or protein using natural speech (e.g. 'log a chicken salad', 'log 500 calories', 'log 40 protein').")
 
     @Parameter(
         title: "Food or Nutrition Description",

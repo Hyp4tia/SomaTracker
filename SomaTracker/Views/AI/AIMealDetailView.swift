@@ -66,7 +66,7 @@ struct AIMealDetailView: View {
                             .foregroundStyle(Color(.secondaryLabel))
                             .textCase(.none)
 
-                        Text(entry.title.isEmpty ? "Jacob's Wedding" : entry.title)
+                        Text(entry.title.isEmpty ? "Meal Entry" : entry.title)
                             .font(.system(size: 26, weight: .bold, design: .serif))
                             .foregroundStyle(Color(.label))
                             .multilineTextAlignment(.center)
@@ -106,6 +106,14 @@ struct AIMealDetailView: View {
                     nutritionThreadsSection
                         .padding(.horizontal, 24)
                         .padding(.top, 6)
+                        .padding(.bottom, 12)
+
+                    // 6. Medical Disclaimer Footnote
+                    Text("Nutritional estimates are for informational purposes only and are not medical advice. Consult a healthcare professional before starting any diet or nutrition plan.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color(.tertiaryLabel))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 28)
                         .padding(.bottom, 36)
                 }
             }
@@ -262,7 +270,7 @@ struct AIMealDetailView: View {
 
                 Spacer()
 
-                Text("AI Verified")
+                Text("AI Estimate")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(SomaColors.emerald)
                     .padding(.horizontal, 8)
@@ -464,9 +472,9 @@ struct ShareSheet: UIViewControllerRepresentable {
 
 #Preview {
     let sample = AIMealEntry(
-        title: "Jacob's Wedding",
+        title: "Grilled Salmon & Quinoa Bowl",
         location: "Los Angeles, CA",
-        storyText: "We were not on the guest list and made no real effort to pretend otherwise. They fed us anyway lol.",
+        storyText: "Fresh grilled salmon fillet over seasoned quinoa and steamed broccoli.",
         calories: 680,
         proteinG: 38.0,
         carbsG: 62.0,

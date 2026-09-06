@@ -377,17 +377,17 @@ struct SettingsView: View {
                 }
 
                 Button {
-                    openURL("https://x.com/hypatox?s=21&t=-yUOJjsm0CIezkq3MgTq5Q")
+                    openURL("mailto:ziadm4772@gmail.com")
                 } label: {
                     HStack(spacing: 14) {
-                        rowIcon(icon: "paperplane.fill", color: Color(hex: "5856D6"), isCircularBadge: false)
+                        rowIcon(icon: "envelope.fill", color: Color(hex: "5856D6"), isCircularBadge: false)
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Contact & Feedback")
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(Color(.label))
 
-                            Text("Reach out directly with questions")
+                            Text("ziadm4772@gmail.com")
                                 .font(.system(size: 13))
                                 .foregroundStyle(Color(.secondaryLabel))
                         }
@@ -413,6 +413,31 @@ struct SettingsView: View {
                                 .foregroundStyle(Color(.label))
 
                             Text("Your health data stays on device")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color(.tertiaryLabel))
+                    }
+                    .padding(.vertical, 3)
+                }
+
+                Button {
+                    openURL("https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")
+                } label: {
+                    HStack(spacing: 14) {
+                        rowIcon(icon: "doc.text.fill", color: Color(hex: "0284C7"), isCircularBadge: false)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Terms of Use (EULA)")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Color(.label))
+
+                            Text("Standard Apple Terms of Use")
                                 .font(.system(size: 13))
                                 .foregroundStyle(Color(.secondaryLabel))
                         }
@@ -462,7 +487,7 @@ struct SettingsView: View {
                     Text("This will permanently delete all your logs, entries, and profile data. You will be returned to the initial setup screen.")
                 }
             } header: {
-                Text("ACCOUNT")
+                Text("DATA & PRIVACY")
             }
 
             // MARK: - Version & Credits
@@ -642,6 +667,7 @@ struct SettingsView: View {
             try modelContext.delete(model: FoodEntry.self)
             try modelContext.delete(model: WaterEntry.self)
             try modelContext.delete(model: DailyLog.self)
+            try modelContext.delete(model: AIMealEntry.self)
             try modelContext.delete(model: UserProfile.self)
             try modelContext.save()
         } catch {

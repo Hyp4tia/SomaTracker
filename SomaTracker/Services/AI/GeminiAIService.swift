@@ -9,9 +9,17 @@ import Foundation
 
 final class GeminiAIService: AIServiceProtocol {
     private let apiKey: String
+    private let proxyEndpoint: String
+    private let proxyClientSecret: String
 
-    init(apiKey: String) {
+    init(
+        apiKey: String = APIConfiguration.shared.bundledGeminiApiKey,
+        proxyEndpoint: String = APIConfiguration.shared.proxyEndpointURL,
+        proxyClientSecret: String = APIConfiguration.shared.proxyClientSecret
+    ) {
         self.apiKey = apiKey
+        self.proxyEndpoint = proxyEndpoint
+        self.proxyClientSecret = proxyClientSecret
     }
 
     func analyze(
@@ -22,13 +30,13 @@ final class GeminiAIService: AIServiceProtocol {
         voiceTranscription: String? = nil,
         alternativeTranscriptions: [String] = []
     ) async throws -> AIMealAnalysisResult {
-        guard !apiKey.isEmpty else {
-            throw NSError(domain: "GeminiAIService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Gemini API key is not configured."])
+        guard !proxyEndpoint.isEmpty || !apiKey.isEmpty else {
+            throw NSError(domain: "GeminiAIService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Neither Gemini proxy endpoint nor API key is configured."])
         }
 
         let candidateModels = [
-            "gemini-3.7-flash",
             "gemini-3.6-flash",
+            "gemini-3.7-flash",
             "gemini-3.5-flash",
             "gemini-3.5-flash-lite",
             "gemini-3.1-flash-lite",
@@ -138,12 +146,20 @@ final class GeminiAIService: AIServiceProtocol {
 
         var lastError: Error? = nil
         for modelName in candidateModels {
-            let endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(modelName):generateContent?key=\(apiKey)"
+            let endpoint: String
+            if !proxyEndpoint.isEmpty {
+                endpoint = "\(proxyEndpoint)?model=\(modelName)"
+            } else {
+                endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(modelName):generateContent?key=\(apiKey)"
+            }
             guard let url = URL(string: endpoint) else { continue }
 
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if !proxyEndpoint.isEmpty && !proxyClientSecret.isEmpty {
+                request.setValue(proxyClientSecret, forHTTPHeaderField: "X-Soma-Client-Key")
+            }
             request.httpBody = requestData
             request.timeoutInterval = 25
 

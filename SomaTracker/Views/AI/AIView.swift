@@ -118,8 +118,18 @@ struct AIView: View {
                     }
                 }
 
-                // 3. Floating Tab Bar Clearance
+                // 3. Medical Disclaimer & Clearance
                 Section {
+                    Text("Nutritional estimates are for informational purposes only and are not medical advice. Consult a healthcare professional before starting any diet or nutrition plan.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color(.tertiaryLabel))
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.horizontal, 24)
+                        .padding(.top, 8)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+
                     Color.clear
                         .frame(height: 110)
                         .listRowInsets(EdgeInsets())

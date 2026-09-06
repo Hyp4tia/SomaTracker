@@ -1,10 +1,10 @@
 # Soma
 
-**Soma** (ⲥⲱⲙⲁ - Coptic for "body") is a native iOS 26 health tracker that keeps things simple: calories, water, protein, and steps - nothing more, nothing synced to a server.
+**Soma** (ⲥⲱⲙⲁ - Coptic for "body") is a native iOS 26 health tracker that keeps things simple: calories, water, protein, and steps - fast, private, and distraction-free.
 
 ## Overview
 
-No backend. No authentication. No accounts to manage. Soma stores everything locally on-device using SwiftData, and pulls step data automatically from Apple Health via HealthKit. It's built for people who want a fast, private, distraction-free way to log their day.
+No backend account to manage. Soma stores your daily history and metrics locally on-device using SwiftData, and pulls step data automatically from Apple Health via HealthKit. It's built for people who want a fast, private, distraction-free way to log their day.
 
 ## Features
 
@@ -18,7 +18,7 @@ No backend. No authentication. No accounts to manage. Soma stores everything loc
 - Data export to CSV with interactive date range picker sheet
 - AI health assistant tab with contextual suggestions
 - iOS 26 Liquid Glass UI and semantic metric color hierarchy
-- 100% local storage - no data ever leaves the device
+- On-device SwiftData storage with secure cloud multimodal AI meal analysis
 
 ## Tech Stack
 
@@ -72,9 +72,8 @@ open Soma.xcodeproj
 Before building, make sure `Info.plist` includes:
 
 - `NSHealthShareUsageDescription`
-- `NSMotionUsageDescription`
 
-Both are required - HealthKit code will fail without them, and Apple will reject submissions missing either.
+Required for HealthKit step count synchronization.
 
 ## Status
 
@@ -82,7 +81,7 @@ In active development (pre-release). Core data models, HealthKit integration, st
 
 ## Bundle ID
 
-`com.zeyad.soma` - locked after first App Store submission.
+`com.hyp4tia.soma` - locked after first App Store submission.
 
 ## License
 

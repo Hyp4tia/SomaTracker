@@ -53,7 +53,7 @@ final class AIRouter {
         // Step 2: Route to Gemini Flash for all modalities (Photos, Voice Audio, Arabic/English Text)
         if config.hasCloudVisionReady {
             do {
-                let service = GeminiAIService(apiKey: config.bundledGeminiApiKey)
+                let service = GeminiAIService()
 
                 return try await service.analyze(
                     userNotes: !combinedText.isEmpty ? combinedText : notes,

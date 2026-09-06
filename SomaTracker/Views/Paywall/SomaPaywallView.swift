@@ -41,7 +41,7 @@ struct SomaPaywallView: View {
 
         var subDescription: String {
             switch self {
-            case .yearly: return "Includes 3-Day Free Trial · Just $0.57/wk"
+            case .yearly: return "Billed annually · Save 70% vs weekly"
             case .monthly: return "Flexible monthly billing"
             case .weekly: return "Billed weekly"
             }
@@ -49,7 +49,7 @@ struct SomaPaywallView: View {
 
         var badgeText: String? {
             switch self {
-            case .yearly: return "BEST VALUE · SAVE 70%"
+            case .yearly: return "BEST VALUE · SAVE 70% VS WEEKLY"
             case .monthly: return nil
             case .weekly: return nil
             }
@@ -113,8 +113,8 @@ struct SomaPaywallView: View {
                             )
                             featureRow(
                                 icon: "flame.fill",
-                                title: "Atwater Scientific Macro Integrity",
-                                subtitle: "Mathematical calorie consistency with accurate restaurant cooking oil calibration."
+                                title: "Smart Macro Calibration",
+                                subtitle: "Mathematical calorie consistency with AI-estimated meal and macro breakdowns."
                             )
                         }
                         .padding(18)
@@ -143,7 +143,7 @@ struct SomaPaywallView: View {
                                         ProgressView()
                                             .tint(.white)
                                     } else {
-                                        Text(selectedPlan == .yearly ? "Start 3-Day Free Trial" : "Continue with \(selectedPlan.title)")
+                                        Text("Continue with \(selectedPlan.title)")
                                             .font(.system(size: 16, weight: .semibold))
                                         Image(systemName: "arrow.right")
                                             .font(.system(size: 14, weight: .semibold))
@@ -194,7 +194,7 @@ struct SomaPaywallView: View {
                                 Text("·")
                                     .foregroundColor(Color(uiColor: .tertiaryLabel))
 
-                                Link("Privacy Policy", destination: URL(string: "https://www.apple.com/legal/privacy/")!)
+                                Link("Privacy Policy", destination: URL(string: "https://soma-tracker.app/privacy")!)
                                     .font(.system(size: 12, weight: .medium))
                                     .foregroundColor(SomaColors.subtext)
                             }
@@ -300,7 +300,7 @@ struct SomaPaywallView: View {
 
                 Spacer()
 
-                Text(plan.priceDescription)
+                Text(planPriceDisplay(for: plan))
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundColor(SomaColors.navy)
             }
@@ -315,6 +315,17 @@ struct SomaPaywallView: View {
             )
         }
         .buttonStyle(.plain)
+    }
+
+    private func planPriceDisplay(for plan: SubscriptionPlan) -> String {
+        if let product = subscriptionManager.availableProducts.first(where: { $0.id == plan.rawValue }) {
+            switch plan {
+            case .yearly: return "\(product.displayPrice) / yr"
+            case .monthly: return "\(product.displayPrice) / mo"
+            case .weekly: return "\(product.displayPrice) / wk"
+            }
+        }
+        return plan.priceDescription
     }
 
     // MARK: - Actions

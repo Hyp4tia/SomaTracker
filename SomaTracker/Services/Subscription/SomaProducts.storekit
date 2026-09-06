@@ -87,15 +87,10 @@
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "soma_pro_yearly_id",
-          "introductoryOffer" : {
-            "internalID" : "soma_yearly_trial_id",
-            "numberOfPeriods" : 1,
-            "paymentMode" : "free",
-            "subscriptionPeriod" : "P3D"
-          },
+          "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Unlimited AI Voice & Vision with a 3-day free trial, billed annually.",
+              "description" : "Unlimited AI Voice & Vision, billed annually.",
               "displayName" : "Soma Pro Annual",
               "locale" : "en_US"
             }

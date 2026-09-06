@@ -32,7 +32,7 @@ struct BodyStatsView: View {
                     .multilineTextAlignment(.center)
                     .padding(.top, 24)
 
-                Text("Used to calculate your daily calorie and protein targets.")
+                Text("Used to calculate your estimated daily calorie and protein targets.")
                     .font(SomaTypography.body)
                     .foregroundStyle(SomaColors.white.opacity(0.65))
                     .multilineTextAlignment(.center)
