@@ -40,6 +40,7 @@ struct LogSheetView: View {
     @State private var selectedCategory: LogCategory = .calories
     @State private var displayValue = "0"
     @State private var descriptionText = ""
+    @State private var showAIMultimodalSheet = false
     @FocusState private var isDescriptionFocused: Bool
 
     private var numericValue: Int {
@@ -113,6 +114,32 @@ struct LogSheetView: View {
                     }
                     .buttonStyle(LiquidGlassButtonStyle())
                     .accessibilityLabel("Close")
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showAIMultimodalSheet = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "sparkles")
+                                .font(.system(size: 13, weight: .bold))
+                            Text("AI Log")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .foregroundStyle(SomaColors.navy)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(SomaColors.navy.opacity(0.08))
+                        .clipShape(Capsule())
+                    }
+                    .accessibilityLabel("Log with Soma AI")
+                }
+            }
+            .sheet(isPresented: $showAIMultimodalSheet) {
+                AIMultimodalInputSheet { newEntry in
+                    newEntry.syncToFoodEntry(in: modelContext)
+                    dismiss()
                 }
             }
         }

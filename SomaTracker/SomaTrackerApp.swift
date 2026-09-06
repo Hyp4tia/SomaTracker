@@ -16,6 +16,7 @@ struct SomaTrackerApp: App {
             DailyLog.self,
             FoodEntry.self,
             WaterEntry.self,
+            AIMealEntry.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

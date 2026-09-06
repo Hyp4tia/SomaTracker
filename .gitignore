@@ -1,0 +1,36 @@
+# Xcode & macOS
+.DS_Store
+*/.DS_Store
+build/
+DerivedData/
+*.xcuserstate
+project.xcworkspace/xcuserdata/
+*.xcuserdatad
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+
+# Secrets & Configuration (CRITICAL - NEVER COMMIT)
+Secrets.xcconfig
+APIKeys.plist
+Config.plist
+APISecrets.swift
+*.env
+.env
+.env.*
+*.secret
+
+# Fastlane & Signing
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+*.p12
+*.cer
+*.mobileprovision
+AuthKey_*.p8
+
+# Swift Package Manager & Temporary files
+.build/
+Packages/
+*.swp
+*~

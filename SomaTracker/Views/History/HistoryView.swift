@@ -24,6 +24,7 @@ struct HistoryView: View {
     @State private var selectedCategoryFilter: HistoryCategoryFilter = .all
     @State private var showExportSheet = false
     @State private var showCalendarPicker = false
+    @State private var editingItem: HistoryEditItem? = nil
 
     private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
     private var calendar: Calendar { Calendar.current }
@@ -48,55 +49,66 @@ struct HistoryView: View {
         calendar.isDateInToday(selectedDate)
     }
 
+    private var currentLogs: [DailyLog] {
+        logs.filter { calendar.isDate($0.date, inSameDayAs: selectedDate) }
+    }
+
     private var currentLog: DailyLog? {
-        logs.first { calendar.isDate($0.date, inSameDayAs: selectedDate) }
+        currentLogs.first
     }
 
     private var dayCalories: Int {
-        currentLog?.totalCalories ?? 0
+        currentLogs.reduce(0) { $0 + $1.totalCalories }
     }
 
     private var dayProtein: Int {
-        Int((currentLog?.totalProtein ?? 0).rounded())
+        Int(currentLogs.reduce(0.0) { $0 + $1.totalProtein }.rounded())
     }
 
     private var dayWater: Int {
-        currentLog?.totalWater ?? 0
+        currentLogs.reduce(0) { $0 + $1.totalWater }
     }
 
     private var daySteps: Int {
-        currentLog?.steps ?? 0
+        currentLogs.map(\.steps).max() ?? 0
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
+        List {
+            Group {
                 // 1. Date Navigator (< Date >)
                 dateNavigatorHeader
-                    .padding(.horizontal, 20)
                     .padding(.top, 12)
 
                 // 2. Three Hero Stat Cards (CALORIES, PROTEIN, WATER)
                 heroCardsRow
-                    .padding(.horizontal, 20)
 
                 // 3. Category Filter Pills (All, Food, Protein, Water, Steps)
                 categoryFilterPills
-                    .padding(.horizontal, 20)
                     .padding(.top, 4)
-
-                // 4. Grouped Content Sections (FOOD, PROTEIN, WATER, STEPS)
-                if hasAnyEntries {
-                    entriesGroupedView
-                        .padding(.horizontal, 20)
-                } else {
-                    emptyDayView
-                        .padding(.horizontal, 20)
-                        .padding(.top, 24)
-                }
             }
-            .padding(.bottom, 36)
+            .listRowInsets(EdgeInsets(top: 6, leading: 20, bottom: 6, trailing: 20))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+
+            // 4. Grouped Content Sections (FOOD, PROTEIN, WATER, STEPS)
+            if hasAnyEntries {
+                entriesGroupedView
+            } else {
+                emptyDayView
+                    .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 24, trailing: 20))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+            }
+
+            Color.clear
+                .frame(height: 36)
+                .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
         .background(Color(.systemBackground))
         .navigationTitle("History")
         .navigationBarTitleDisplayMode(.inline)
@@ -157,6 +169,13 @@ struct HistoryView: View {
                 .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(Color(.systemGroupedBackground))
+        }
+        .sheet(item: $editingItem) { item in
+            EditHistoryEntrySheet(item: item)
+                .preferredColorScheme(.light)
+        }
+        .task {
+            DailyLog.deduplicateAllLogs(context: modelContext)
         }
     }
 
@@ -315,95 +334,192 @@ struct HistoryView: View {
     // MARK: - 4. Grouped Content Sections (Food, Protein, Water, Steps)
 
     private var hasAnyEntries: Bool {
-        guard let log = currentLog else { return false }
-        return !log.foodEntries.isEmpty || !log.waterEntries.isEmpty || log.steps > 0
+        dayCalories > 0 || dayWater > 0 || daySteps > 0 || currentLogs.contains { !$0.foodEntries.isEmpty || !$0.waterEntries.isEmpty }
     }
 
+    @ViewBuilder
     private var entriesGroupedView: some View {
-        VStack(spacing: 24) {
-            let log = currentLog!
+        let allFoods = currentLogs.flatMap(\.foodEntries).sorted(by: { $0.timestamp < $1.timestamp })
+        let foodEntries = allFoods.filter { !Self.isProteinEntry($0) }
+        let proteinEntries = allFoods.filter { Self.isProteinEntry($0) }
+        let waterEntries = currentLogs.flatMap(\.waterEntries).sorted(by: { $0.timestamp < $1.timestamp })
+        let stepsCount = daySteps
 
-            let allFoods = log.foodEntries.sorted(by: { $0.timestamp < $1.timestamp })
-            let foodEntries = allFoods.filter { !isProteinEntry($0) }
-            let proteinEntries = allFoods.filter { isProteinEntry($0) }
-            let waterEntries = log.waterEntries.sorted(by: { $0.timestamp < $1.timestamp })
-            let stepsCount = log.steps
+        // 1. Food Section
+        if (selectedCategoryFilter == .all || selectedCategoryFilter == .food) && !foodEntries.isEmpty {
+            Section {
+                ForEach(foodEntries) { entry in
+                    foodRow(entry)
+                        .listRowInsets(EdgeInsets(top: 2, leading: 20, bottom: 2, trailing: 20))
+                        .listRowSeparator(.visible, edges: .bottom)
+                        .listRowBackground(Color(.systemBackground))
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                deleteFoodEntry(entry, from: entry.dailyLog)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
 
-            // 1. Food Section
-            if (selectedCategoryFilter == .all || selectedCategoryFilter == .food) && !foodEntries.isEmpty {
-                sectionGroup(title: "Food") {
-                    VStack(spacing: 0) {
-                        ForEach(Array(foodEntries.enumerated()), id: \.element.id) { index, entry in
-                            foodRow(entry, in: log)
+                            Button {
+                                editingItem = .food(entry)
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+                            .tint(SomaColors.navy)
+                        }
+                        .contextMenu {
+                            Button {
+                                editingItem = .food(entry)
+                            } label: {
+                                Label("Edit Entry", systemImage: "pencil")
+                            }
 
-                            if index < foodEntries.count - 1 {
-                                Divider()
+                            Button(role: .destructive) {
+                                deleteFoodEntry(entry, from: entry.dailyLog)
+                            } label: {
+                                Label("Delete Entry", systemImage: "trash")
                             }
                         }
-                    }
                 }
-            } else if selectedCategoryFilter == .food && foodEntries.isEmpty {
+            } header: {
+                sectionHeader("Food")
+            }
+        } else if selectedCategoryFilter == .food && foodEntries.isEmpty {
+            Section {
                 emptyCategoryView("No food logs for this day")
+                    .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 24, trailing: 20))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
             }
+        }
 
-            // 2. Protein Section
-            if (selectedCategoryFilter == .all || selectedCategoryFilter == .protein) && !proteinEntries.isEmpty {
-                sectionGroup(title: "Protein") {
-                    VStack(spacing: 0) {
-                        ForEach(Array(proteinEntries.enumerated()), id: \.element.id) { index, entry in
-                            proteinRow(entry, in: log)
+        // 2. Protein Section
+        if (selectedCategoryFilter == .all || selectedCategoryFilter == .protein) && !proteinEntries.isEmpty {
+            Section {
+                ForEach(proteinEntries) { entry in
+                    proteinRow(entry)
+                        .listRowInsets(EdgeInsets(top: 2, leading: 20, bottom: 2, trailing: 20))
+                        .listRowSeparator(.visible, edges: .bottom)
+                        .listRowBackground(Color(.systemBackground))
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                deleteFoodEntry(entry, from: entry.dailyLog)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
 
-                            if index < proteinEntries.count - 1 {
-                                Divider()
+                            Button {
+                                editingItem = .food(entry)
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+                            .tint(SomaColors.navy)
+                        }
+                        .contextMenu {
+                            Button {
+                                editingItem = .food(entry)
+                            } label: {
+                                Label("Edit Entry", systemImage: "pencil")
+                            }
+
+                            Button(role: .destructive) {
+                                deleteFoodEntry(entry, from: entry.dailyLog)
+                            } label: {
+                                Label("Delete Entry", systemImage: "trash")
                             }
                         }
-                    }
                 }
-            } else if selectedCategoryFilter == .protein && proteinEntries.isEmpty {
+            } header: {
+                sectionHeader("Protein")
+            }
+        } else if selectedCategoryFilter == .protein && proteinEntries.isEmpty {
+            Section {
                 emptyCategoryView("No protein logs for this day")
+                    .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 24, trailing: 20))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
             }
+        }
 
-            // 3. Water Section
-            if (selectedCategoryFilter == .all || selectedCategoryFilter == .water) && !waterEntries.isEmpty {
-                sectionGroup(title: "Water") {
-                    VStack(spacing: 0) {
-                        ForEach(Array(waterEntries.enumerated()), id: \.element.id) { index, entry in
-                            waterRow(entry, in: log)
+        // 3. Water Section
+        if (selectedCategoryFilter == .all || selectedCategoryFilter == .water) && !waterEntries.isEmpty {
+            Section {
+                ForEach(waterEntries) { entry in
+                    waterRow(entry)
+                        .listRowInsets(EdgeInsets(top: 2, leading: 20, bottom: 2, trailing: 20))
+                        .listRowSeparator(.visible, edges: .bottom)
+                        .listRowBackground(Color(.systemBackground))
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                deleteWaterEntry(entry, from: entry.dailyLog)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
 
-                            if index < waterEntries.count - 1 {
-                                Divider()
+                            Button {
+                                editingItem = .water(entry)
+                            } label: {
+                                Label("Edit", systemImage: "pencil")
+                            }
+                            .tint(SomaColors.navy)
+                        }
+                        .contextMenu {
+                            Button {
+                                editingItem = .water(entry)
+                            } label: {
+                                Label("Edit Entry", systemImage: "pencil")
+                            }
+
+                            Button(role: .destructive) {
+                                deleteWaterEntry(entry, from: entry.dailyLog)
+                            } label: {
+                                Label("Delete Entry", systemImage: "trash")
                             }
                         }
-                    }
                 }
-            } else if selectedCategoryFilter == .water && waterEntries.isEmpty {
-                emptyCategoryView("No water logs for this day")
+            } header: {
+                sectionHeader("Water")
             }
+        } else if selectedCategoryFilter == .water && waterEntries.isEmpty {
+            Section {
+                emptyCategoryView("No water logs for this day")
+                    .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 24, trailing: 20))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+            }
+        }
 
-            // 4. Steps Section
-            if (selectedCategoryFilter == .all || selectedCategoryFilter == .steps) && stepsCount > 0 {
-                sectionGroup(title: "Steps") {
-                    stepsRow(for: log)
-                }
-            } else if selectedCategoryFilter == .steps && stepsCount == 0 {
+        // 4. Steps Section
+        if (selectedCategoryFilter == .all || selectedCategoryFilter == .steps) && stepsCount > 0 {
+            Section {
+                stepsRow(steps: stepsCount)
+                    .listRowInsets(EdgeInsets(top: 2, leading: 20, bottom: 2, trailing: 20))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color(.systemBackground))
+            } header: {
+                sectionHeader("Steps")
+            }
+        } else if selectedCategoryFilter == .steps && stepsCount == 0 {
+            Section {
                 emptyCategoryView("No steps recorded for this day")
+                    .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 24, trailing: 20))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
             }
         }
     }
 
-    private func sectionGroup<Content: View>(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.system(size: 18, weight: .bold, design: .default))
-                .foregroundStyle(Color(.label))
-
-            VStack(spacing: 0) {
-                content()
-            }
-        }
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 18, weight: .bold, design: .default))
+            .foregroundStyle(Color(.label))
+            .textCase(nil)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 14)
+            .padding(.bottom, 4)
+            .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color(.systemBackground))
     }
 
     private func emptyCategoryView(_ message: String) -> some View {
@@ -416,123 +532,111 @@ struct HistoryView: View {
 
     // MARK: - Rows
 
-    private func foodRow(_ entry: FoodEntry, in log: DailyLog) -> some View {
-        SwipeToDeleteRow {
-            deleteFoodEntry(entry, from: log)
-        } content: {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(resolvedFoodTitle(entry))
-                        .font(.system(size: 15, weight: .regular))
-                        .foregroundStyle(Color(.label))
-                        .lineLimit(2)
+    private func foodRow(_ entry: FoodEntry) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(resolvedFoodTitle(entry))
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(Color(.label))
+                    .lineLimit(2)
 
-                    Text(entry.timestamp.formatted(date: .omitted, time: .shortened))
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundStyle(Color(.secondaryLabel))
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 3) {
-                    Text("\(entry.effectiveCalories.formatted()) kcal")
-                        .font(.system(size: 15, weight: .medium))
-                        .monospacedDigit()
-                        .foregroundStyle(Color(.label))
-
-                    if entry.proteinG > 0 {
-                        Text("\(Int(entry.proteinG.rounded()))g Protein")
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundStyle(Color.orange)
-                    }
-                }
+                Text(entry.timestamp.formatted(date: .omitted, time: .shortened))
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(Color(.secondaryLabel))
             }
-            .padding(.vertical, 10)
-        }
-    }
 
-    private func proteinRow(_ entry: FoodEntry, in log: DailyLog) -> some View {
-        SwipeToDeleteRow {
-            deleteFoodEntry(entry, from: log)
-        } content: {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(resolvedProteinTitle(entry))
-                        .font(.system(size: 15, weight: .regular))
-                        .foregroundStyle(Color(.label))
-                        .lineLimit(2)
+            Spacer()
 
-                    Text(entry.timestamp.formatted(date: .omitted, time: .shortened))
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundStyle(Color(.secondaryLabel))
-                }
+            VStack(alignment: .trailing, spacing: 3) {
+                Text("\(entry.effectiveCalories.formatted()) kcal")
+                    .font(.system(size: 15, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(Color(.label))
 
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 3) {
+                if entry.proteinG > 0 {
                     Text("\(Int(entry.proteinG.rounded()))g Protein")
-                        .font(.system(size: 15, weight: .medium))
-                        .monospacedDigit()
-                        .foregroundStyle(Color.orange)
-
-                    Text("\(entry.effectiveCalories.formatted()) kcal")
                         .font(.system(size: 13, weight: .regular))
-                        .foregroundStyle(Color(.secondaryLabel))
+                        .foregroundStyle(Color.orange)
                 }
             }
-            .padding(.vertical, 10)
         }
+        .padding(.vertical, 10)
     }
 
-    private func waterRow(_ entry: WaterEntry, in log: DailyLog) -> some View {
+    private func proteinRow(_ entry: FoodEntry) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(resolvedProteinTitle(entry))
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(Color(.label))
+                    .lineLimit(2)
+
+                Text(entry.timestamp.formatted(date: .omitted, time: .shortened))
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(Color(.secondaryLabel))
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 3) {
+                Text("\(Int(entry.proteinG.rounded()))g Protein")
+                    .font(.system(size: 15, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(Color.orange)
+
+                Text("\(entry.effectiveCalories.formatted()) kcal")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(Color(.secondaryLabel))
+            }
+        }
+        .padding(.vertical, 10)
+    }
+
+    private func waterRow(_ entry: WaterEntry) -> some View {
         let displayAmount = Units.waterValue(ml: entry.amount, system: unitSystem)
         let unitString = Units.waterUnit(unitSystem)
         let hasCustomLabel = entry.label != nil && !entry.label!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
-        return SwipeToDeleteRow {
-            deleteWaterEntry(entry, from: log)
-        } content: {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(hasCustomLabel ? entry.label! : "\(displayAmount) \(unitString)")
-                        .font(.system(size: 15, weight: .regular))
-                        .foregroundStyle(Color(.label))
-                        .lineLimit(1)
-
-                    HStack(spacing: 6) {
-                        if hasCustomLabel {
-                            Text("\(displayAmount) \(unitString)")
-                                .font(.system(size: 13, weight: .regular))
-                                .foregroundStyle(Color(.secondaryLabel))
-                            Text("•")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Color(.tertiaryLabel))
-                        }
-
-                        Text(entry.timestamp.formatted(date: .omitted, time: .shortened))
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundStyle(Color(.secondaryLabel))
-                    }
-                }
-
-                Spacer()
+        return HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(hasCustomLabel ? entry.label! : "\(displayAmount) \(unitString)")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(Color(.label))
+                    .lineLimit(1)
 
                 HStack(spacing: 6) {
-                    Text("\(displayAmount) \(unitString)")
-                        .font(.system(size: 15, weight: .medium))
-                        .monospacedDigit()
-                        .foregroundStyle(Color.blue)
+                    if hasCustomLabel {
+                        Text("\(displayAmount) \(unitString)")
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundStyle(Color(.secondaryLabel))
+                        Text("•")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color(.tertiaryLabel))
+                    }
 
-                    Image(systemName: "drop.fill")
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundStyle(Color.blue)
+                    Text(entry.timestamp.formatted(date: .omitted, time: .shortened))
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(Color(.secondaryLabel))
                 }
             }
-            .padding(.vertical, 10)
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                Text("\(displayAmount) \(unitString)")
+                    .font(.system(size: 15, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(Color.blue)
+
+                Image(systemName: "drop.fill")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(Color.blue)
+            }
         }
+        .padding(.vertical, 10)
     }
 
-    private func stepsRow(for log: DailyLog) -> some View {
+    private func stepsRow(steps: Int) -> some View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Daily Steps")
@@ -551,7 +655,7 @@ struct HistoryView: View {
                     .font(.system(size: 15, weight: .regular))
                     .foregroundStyle(SomaColors.navy)
 
-                Text(log.steps.formatted())
+                Text(steps.formatted())
                     .font(.system(size: 15, weight: .medium))
                     .monospacedDigit()
                     .foregroundStyle(Color(.label))
@@ -618,7 +722,7 @@ struct HistoryView: View {
 
     // MARK: - Category & Title Helpers
 
-    private func isProteinEntry(_ entry: FoodEntry) -> Bool {
+    static func isProteinEntry(_ entry: FoodEntry) -> Bool {
         let lower = entry.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if lower == "protein" || lower.contains("protein") || lower.contains("whey") || lower.contains("shake") || lower.contains("isolate") {
             return true
@@ -650,83 +754,316 @@ struct HistoryView: View {
 
     // MARK: - Deletion Mutations
 
-    private func deleteFoodEntry(_ entry: FoodEntry, from log: DailyLog) {
+    private func deleteFoodEntry(_ entry: FoodEntry, from log: DailyLog?) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         withAnimation(.snappy) {
-            log.foodEntries.removeAll { $0.id == entry.id }
+            log?.foodEntries.removeAll { $0.id == entry.id }
             modelContext.delete(entry)
             try? modelContext.save()
         }
     }
 
-    private func deleteWaterEntry(_ entry: WaterEntry, from log: DailyLog) {
+    private func deleteWaterEntry(_ entry: WaterEntry, from log: DailyLog?) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         withAnimation(.snappy) {
-            log.waterEntries.removeAll { $0.id == entry.id }
+            log?.waterEntries.removeAll { $0.id == entry.id }
             modelContext.delete(entry)
             try? modelContext.save()
         }
     }
 }
 
-// MARK: - Swipe To Delete Container
+// MARK: - History Edit Item
 
-private struct SwipeToDeleteRow<Content: View>: View {
-    let onDelete: () -> Void
-    @ViewBuilder let content: () -> Content
+enum HistoryEditItem: Identifiable {
+    case food(FoodEntry)
+    case water(WaterEntry)
 
-    @State private var offset: CGFloat = 0
-    @State private var isSwiped = false
+    var id: String {
+        switch self {
+        case .food(let entry):
+            return "food_\(entry.id)"
+        case .water(let entry):
+            return "water_\(entry.id)"
+        }
+    }
+}
+
+// MARK: - Edit History Entry Sheet
+
+struct EditHistoryEntrySheet: View {
+    let item: HistoryEditItem
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @AppStorage(Units.storageKey) private var unitSystemRaw = UnitSystem.metric.rawValue
+
+    @State private var displayValue = "0"
+    @State private var descriptionText = ""
+    @FocusState private var isDescriptionFocused: Bool
+
+    private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
+
+    private var isProtein: Bool {
+        if case .food(let entry) = item {
+            return HistoryView.isProteinEntry(entry)
+        }
+        return false
+    }
+
+    private var categoryTitle: String {
+        switch item {
+        case .food:
+            return isProtein ? "Edit Protein" : "Edit Food"
+        case .water:
+            return "Edit Water"
+        }
+    }
+
+    private var unit: String {
+        switch item {
+        case .food:
+            return isProtein ? "g" : "kcal"
+        case .water:
+            return Units.waterUnit(unitSystem)
+        }
+    }
+
+    private var accentColor: Color {
+        switch item {
+        case .food:
+            return isProtein ? Color.purple : Color.orange
+        case .water:
+            return Color.blue
+        }
+    }
+
+    private var numericValue: Int {
+        Int(displayValue) ?? 0
+    }
+
+    private var canSave: Bool {
+        numericValue > 0
+    }
 
     var body: some View {
-        ZStack(alignment: .trailing) {
-            if offset < -10 {
-                Button(role: .destructive) {
-                    onDelete()
-                } label: {
-                    Image(systemName: "trash.fill")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 52, height: 38)
-                        .background(Color.red)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .transition(.opacity)
-            }
+        NavigationStack {
+            VStack(spacing: 0) {
+                // Hero Display Section
+                displaySection
+                    .padding(.top, isDescriptionFocused ? 8 : 16)
 
-            content()
-                .background(Color(.systemBackground))
-                .offset(x: offset)
-                .gesture(
-                    DragGesture(minimumDistance: 20, coordinateSpace: .local)
-                        .onChanged { gesture in
-                            if gesture.translation.width < 0 {
-                                offset = max(gesture.translation.width, -60)
-                            } else if isSwiped && gesture.translation.width > 0 {
-                                offset = min(-60 + gesture.translation.width, 0)
-                            }
+                if !isDescriptionFocused {
+                    Spacer(minLength: 8)
+
+                    // Custom Keypad
+                    numberPad
+                        .padding(.horizontal, 20)
+
+                    // Save Button
+                    Button {
+                        save()
+                    } label: {
+                        Text("Save Changes")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(canSave ? Color.white : Color(.tertiaryLabel))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 54)
+                            .background(canSave ? accentColor : Color(.tertiarySystemFill))
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .disabled(!canSave)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 14)
+                    .padding(.bottom, 8)
+                } else {
+                    Spacer()
+                }
+            }
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .animation(.snappy(duration: 0.25), value: isDescriptionFocused)
+            .navigationTitle(isDescriptionFocused ? "" : categoryTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dismiss()
+                    } label: {
+                        ZStack {
+                            Color.clear
+                                .frame(width: 32, height: 32)
+                                .glassEffect(.regular, in: .circle)
+
+                            Image(systemName: "xmark")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(SomaColors.navy)
                         }
-                        .onEnded { gesture in
-                            withAnimation(.snappy(duration: 0.22)) {
-                                if gesture.translation.width < -30 {
-                                    offset = -60
-                                    isSwiped = true
-                                } else {
-                                    offset = 0
-                                    isSwiped = false
-                                }
-                            }
-                        }
-                )
-        }
-        .contextMenu {
-            Button(role: .destructive) {
-                onDelete()
-            } label: {
-                Label("Delete Entry", systemImage: "trash")
+                        .frame(width: 32, height: 32)
+                        .contentShape(Circle())
+                    }
+                    .buttonStyle(LiquidGlassButtonStyle())
+                    .accessibilityLabel("Close")
+                }
+            }
+            .onAppear {
+                loadInitialData()
             }
         }
+        .presentationDetents([.fraction(0.78)])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Color(.systemBackground))
+    }
+
+    private func loadInitialData() {
+        switch item {
+        case .food(let entry):
+            if HistoryView.isProteinEntry(entry) {
+                displayValue = "\(Int(entry.proteinG.rounded()))"
+                let name = entry.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                descriptionText = name.lowercased() == "protein" || name.isEmpty ? "" : name
+            } else {
+                displayValue = "\(entry.effectiveCalories)"
+                let name = entry.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                descriptionText = name.lowercased() == "food" || name.lowercased() == "quick meal" || name.isEmpty ? "" : name
+            }
+        case .water(let entry):
+            let val = Units.waterValue(ml: entry.amount, system: unitSystem)
+            displayValue = "\(val)"
+            descriptionText = entry.label ?? ""
+        }
+    }
+
+    private var displaySection: some View {
+        VStack(spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(displayValue)
+                    .font(.system(size: 64, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Color(.label))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+
+                Text(unit)
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(Color(.secondaryLabel))
+            }
+            .contentTransition(.numericText())
+            .animation(.snappy(duration: 0.15), value: displayValue)
+
+            TextField(
+                "",
+                text: $descriptionText,
+                prompt: Text("Description (optional)").foregroundStyle(Color(.tertiaryLabel))
+            )
+            .font(.subheadline)
+            .foregroundStyle(Color(.label))
+            .multilineTextAlignment(.center)
+            .tint(.primary)
+            .submitLabel(.done)
+            .onSubmit {
+                isDescriptionFocused = false
+            }
+            .focused($isDescriptionFocused)
+            .padding(.top, 6)
+            .padding(.horizontal, 32)
+        }
+    }
+
+    private var numberPad: some View {
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 3)
+
+        return LazyVGrid(columns: columns, spacing: 10) {
+            ForEach(1...9, id: \.self) { digit in
+                numberButton("\(digit)")
+            }
+            numberButton("00")
+            numberButton("0")
+            deleteButton
+        }
+    }
+
+    private func numberButton(_ label: String) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            appendDigit(label)
+        } label: {
+            Text(label)
+                .font(.title2.weight(.medium))
+                .monospacedDigit()
+                .foregroundStyle(Color(.label))
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var deleteButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            deleteLastDigit()
+        } label: {
+            Image(systemName: "delete.left.fill")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(Color(.secondaryLabel))
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.5)
+                .onEnded { _ in
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    withAnimation(.snappy) {
+                        displayValue = "0"
+                    }
+                }
+        )
+    }
+
+    private func appendDigit(_ digit: String) {
+        if displayValue == "0" {
+            if digit == "0" || digit == "00" { return }
+            displayValue = digit
+        } else {
+            guard displayValue.count < 6 else { return }
+            displayValue += digit
+        }
+    }
+
+    private func deleteLastDigit() {
+        displayValue = String(displayValue.dropLast())
+        if displayValue.isEmpty { displayValue = "0" }
+    }
+
+    private func save() {
+        guard canSave else { return }
+        let label = descriptionText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        switch item {
+        case .food(let entry):
+            if isProtein {
+                let proteinVal = Double(numericValue)
+                entry.proteinG = proteinVal
+                entry.calories = Int(round(proteinVal * 4.0))
+                entry.name = label.isEmpty ? "Protein" : label
+            } else {
+                entry.calories = numericValue
+                entry.name = label.isEmpty ? "Food" : label
+            }
+        case .water(let entry):
+            let ml = Units.waterToML(numericValue, system: unitSystem)
+            entry.amount = ml
+            entry.label = label.isEmpty ? nil : label
+        }
+
+        try? modelContext.save()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        dismiss()
     }
 }
 

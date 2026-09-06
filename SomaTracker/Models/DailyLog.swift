@@ -29,16 +29,92 @@ final class DailyLog {
     }
 
     static func fetchOrCreateToday(context: ModelContext) -> DailyLog {
-        let today = Calendar.current.startOfDay(for: .now)
-        let predicate = #Predicate<DailyLog> { $0.date == today }
-        let descriptor = FetchDescriptor<DailyLog>(predicate: predicate)
-
-        if let existing = (try? context.fetch(descriptor))?.first {
-            return existing
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: .now)
+        guard let nextDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) else {
+            let fallback = DailyLog(date: startOfDay)
+            context.insert(fallback)
+            return fallback
         }
 
-        let log = DailyLog(date: today)
+        let predicate = #Predicate<DailyLog> { log in
+            log.date >= startOfDay && log.date < nextDay
+        }
+        let descriptor = FetchDescriptor<DailyLog>(
+            predicate: predicate,
+            sortBy: [SortDescriptor(\.date, order: .forward)]
+        )
+
+        if let matches = try? context.fetch(descriptor), !matches.isEmpty {
+            if matches.count > 1 {
+                return mergeDuplicates(matches, context: context)
+            }
+            return matches[0]
+        }
+
+        let log = DailyLog(date: startOfDay)
         context.insert(log)
         return log
+    }
+
+    @discardableResult
+    static func mergeDuplicates(_ logs: [DailyLog], context: ModelContext) -> DailyLog {
+        guard let primary = logs.first else {
+            fatalError("mergeDuplicates called with empty array")
+        }
+        if logs.count == 1 { return primary }
+
+        let calendar = Calendar.current
+        primary.date = calendar.startOfDay(for: primary.date)
+
+        for duplicate in logs.dropFirst() {
+            primary.steps = max(primary.steps, duplicate.steps)
+
+            let movingFoods = duplicate.foodEntries
+            duplicate.foodEntries = []
+            for food in movingFoods {
+                food.dailyLog = primary
+                if !primary.foodEntries.contains(where: { $0 === food }) {
+                    primary.foodEntries.append(food)
+                }
+            }
+
+            let movingWater = duplicate.waterEntries
+            duplicate.waterEntries = []
+            for water in movingWater {
+                water.dailyLog = primary
+                if !primary.waterEntries.contains(where: { $0 === water }) {
+                    primary.waterEntries.append(water)
+                }
+            }
+
+            context.delete(duplicate)
+        }
+
+        try? context.save()
+        return primary
+    }
+
+    static func deduplicateAllLogs(context: ModelContext) {
+        let descriptor = FetchDescriptor<DailyLog>(sortBy: [SortDescriptor(\.date, order: .forward)])
+        guard let allLogs = try? context.fetch(descriptor), !allLogs.isEmpty else { return }
+
+        let calendar = Calendar.current
+        var logsByDay: [Date: [DailyLog]] = [:]
+
+        for log in allLogs {
+            let dayKey = calendar.startOfDay(for: log.date)
+            logsByDay[dayKey, default: []].append(log)
+        }
+
+        var didModify = false
+        for (_, dayLogs) in logsByDay where dayLogs.count > 1 {
+            _ = mergeDuplicates(dayLogs, context: context)
+            didModify = true
+        }
+
+        if didModify {
+            try? context.save()
+        }
     }
 }

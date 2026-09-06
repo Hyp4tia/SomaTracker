@@ -132,6 +132,30 @@ struct SettingsView: View {
                 Text("HISTORY & DATA")
             }
 
+            // MARK: - AI & Intelligence
+            Section {
+                NavigationLink {
+                    AISettingsDetailView()
+                } label: {
+                    HStack(spacing: 14) {
+                        rowIcon(icon: "sparkles", color: SomaColors.iris, isCircularBadge: false)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("AI & Intelligence")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Color(.label))
+
+                            Text("Gemini, Siri Shortcuts & Keychain")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+                    }
+                    .padding(.vertical, 3)
+                }
+            } header: {
+                Text("INTELLIGENCE & AI")
+            }
+
             // MARK: - Preferences
             Section {
                 HStack(spacing: 14) {

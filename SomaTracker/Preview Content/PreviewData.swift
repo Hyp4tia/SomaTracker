@@ -11,7 +11,7 @@ struct PreviewData {
     static let container: ModelContainer = {
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try! ModelContainer(
-            for: UserProfile.self, DailyLog.self, FoodEntry.self, WaterEntry.self,
+            for: UserProfile.self, DailyLog.self, FoodEntry.self, WaterEntry.self, AIMealEntry.self,
             configurations: config
         )
         let ctx = container.mainContext

@@ -175,8 +175,8 @@ struct WeeklyBarChart: View {
 
     private var chartDays: [ChartDay] {
         let today = calendar.startOfDay(for: .now)
-        let logMap = logs.reduce(into: [Date: DailyLog]()) { result, log in
-            result[calendar.startOfDay(for: log.date)] = log
+        let logMap = logs.reduce(into: [Date: [DailyLog]]()) { result, log in
+            result[calendar.startOfDay(for: log.date), default: []].append(log)
         }
 
         // Oldest on left, today on right
@@ -185,9 +185,11 @@ struct WeeklyBarChart: View {
                 return nil
             }
 
-            let log = logMap[date]
-            let calories = log?.totalCalories ?? 0
-            let hasAnyData = calories > 0 || (log?.totalWater ?? 0) > 0 || (log?.steps ?? 0) > 0
+            let dayLogs = logMap[date] ?? []
+            let calories = dayLogs.reduce(0) { $0 + $1.totalCalories }
+            let water = dayLogs.reduce(0) { $0 + $1.totalWater }
+            let steps = dayLogs.map(\.steps).max() ?? 0
+            let hasAnyData = calories > 0 || water > 0 || steps > 0
 
             return ChartDay(
                 date: date,

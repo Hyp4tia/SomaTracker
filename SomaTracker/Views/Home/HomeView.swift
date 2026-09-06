@@ -31,9 +31,13 @@ struct HomeView: View {
         Calendar.current.isDateInToday(targetDate)
     }
 
-    private var activeLog: DailyLog? {
+    private var activeLogs: [DailyLog] {
         let calendar = Calendar.current
-        return logs.first { calendar.isDate($0.date, inSameDayAs: targetDate) }
+        return logs.filter { calendar.isDate($0.date, inSameDayAs: targetDate) }
+    }
+
+    private var activeLog: DailyLog? {
+        activeLogs.first
     }
 
     private var todayLog: DailyLog? {
@@ -46,7 +50,7 @@ struct HomeView: View {
     }
 
     private var consumedCalories: Int {
-        activeLog?.totalCalories ?? 0
+        activeLogs.reduce(0) { $0 + $1.totalCalories }
     }
 
     private var remainingCalories: Int {
@@ -79,11 +83,11 @@ struct HomeView: View {
     }
 
     private var consumedProtein: Double {
-        activeLog?.totalProtein ?? 0
+        activeLogs.reduce(0.0) { $0 + $1.totalProtein }
     }
 
     private var consumedWater: Int {
-        activeLog?.totalWater ?? 0
+        activeLogs.reduce(0) { $0 + $1.totalWater }
     }
 
     private var displayedProtein: Double {
@@ -95,10 +99,11 @@ struct HomeView: View {
     }
 
     private var totalStepsTaken: Int {
+        let maxLogSteps = activeLogs.map(\.steps).max() ?? 0
         if isViewingToday {
-            return healthKitManager.todaySteps > 0 ? healthKitManager.todaySteps : (activeLog?.steps ?? 0)
+            return healthKitManager.todaySteps > 0 ? healthKitManager.todaySteps : maxLogSteps
         } else {
-            return activeLog?.steps ?? 0
+            return maxLogSteps
         }
     }
 
@@ -128,7 +133,7 @@ struct HomeView: View {
             return ("—", true, false, "vs yesterday")
         }
 
-        let prevLog = logs.first { calendar.isDate($0.date, inSameDayAs: prevDay) }
+        let prevLogs = logs.filter { calendar.isDate($0.date, inSameDayAs: prevDay) }
 
         let calGoal = Double(max(dailyCalorieGoal, 1))
         let proteinGoal = Double(max(dailyProteinGoal, 1))
@@ -136,10 +141,10 @@ struct HomeView: View {
         let stepGoal = Double(max(dailyStepGoal, 1))
 
         // Previous day metrics
-        let prevCal = Double(prevLog?.totalCalories ?? 0)
-        let prevProtein = prevLog?.totalProtein ?? 0.0
-        let prevWater = Double(prevLog?.totalWater ?? 0)
-        let prevSteps = Double(prevLog?.steps ?? 0)
+        let prevCal = Double(prevLogs.reduce(0) { $0 + $1.totalCalories })
+        let prevProtein = prevLogs.reduce(0.0) { $0 + $1.totalProtein }
+        let prevWater = Double(prevLogs.reduce(0) { $0 + $1.totalWater })
+        let prevSteps = Double(prevLogs.map(\.steps).max() ?? 0)
 
         // Current day metrics
         let currCal = Double(consumedCalories)
@@ -223,6 +228,8 @@ struct HomeView: View {
                 .preferredColorScheme(.light)
             }
             .task {
+                DailyLog.deduplicateAllLogs(context: modelContext)
+
                 guard !didPrepareToday else { return }
                 didPrepareToday = true
 
