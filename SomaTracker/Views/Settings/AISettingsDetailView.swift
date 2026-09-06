@@ -84,7 +84,7 @@ struct AISettingsDetailView: View {
 
                     VStack(alignment: .leading, spacing: 6) {
                         siriPhraseRow(phrase: "\"Hey Siri, log 100 water with Soma\"", detail: "Logs 100 ml water")
-                        siriPhraseRow(phrase: "\"Hey Siri, log a Big Mac in Soma\"", detail: "Logs 590 kcal, 25g protein")
+                        siriPhraseRow(phrase: "\"Hey Siri, log a chicken salad in Soma\"", detail: "Logs 380 kcal, 32g protein")
                         siriPhraseRow(phrase: "\"Hey Siri, log 500 calories in Soma\"", detail: "Logs 500 kcal energy")
                         siriPhraseRow(phrase: "\"Hey Siri, log 40 protein in Soma\"", detail: "Logs 40g protein")
                     }

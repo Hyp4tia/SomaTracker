@@ -448,7 +448,7 @@ struct AIView: View {
                 .padding(.leading, 6)
 
             TextField(
-                "Describe meal or water (e.g. Big Mac)...",
+                "Describe meal or water (e.g. chicken salad)...",
                 text: $inputText
             )
             .font(.system(size: 15))

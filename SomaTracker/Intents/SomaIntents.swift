@@ -3,7 +3,7 @@
 //  SomaTracker
 //
 //  Audited App Intents providing seamless Apple Intelligence & Siri integration
-//  for natural commands like "log 100 water", "log 500 calories", "log big mac".
+//  for natural commands like "log 100 water", "log 500 calories", "log a chicken salad".
 //
 
 import AppIntents
