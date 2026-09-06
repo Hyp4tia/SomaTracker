@@ -11,6 +11,7 @@ import Foundation
 
 /*
 enum APISecrets {
-    static let geminiApiKey = "YOUR_GEMINI_API_KEY_HERE"
+    static let geminiApiKey = ""
+    static let proxyClientSecret = "YOUR_CLOUDFLARE_PROXY_SECRET_HERE"
 }
 */

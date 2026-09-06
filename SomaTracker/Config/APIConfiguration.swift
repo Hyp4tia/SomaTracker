@@ -18,8 +18,10 @@ final class APIConfiguration {
     /// Cloudflare Worker proxy endpoint protecting the Gemini API key
     let proxyEndpointURL: String = "https://soma-ai-proxy.ziadm4772.workers.dev"
 
-    /// Shared client authorization secret matching Cloudflare Worker SOMA_APP_SECRET
-    let proxyClientSecret: String = "soma67app67health"
+    /// Shared client authorization secret matching Cloudflare Worker SOMA_APP_SECRET (loaded from git-ignored APISecrets)
+    var proxyClientSecret: String {
+        APISecrets.proxyClientSecret
+    }
 
     /// App Privacy Policy URL
     let privacyPolicyURL: String = "https://soma-tracker.app/privacy"

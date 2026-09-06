@@ -19,6 +19,13 @@ APISecrets.swift
 .env
 .env.*
 *.secret
+GoogleService-Info.plist
+wrangler.toml
+.wrangler/
+*.pem
+*.key
+*.jks
+*.keystore
 
 # Fastlane & Signing
 fastlane/report.xml
@@ -34,3 +41,5 @@ AuthKey_*.p8
 Packages/
 *.swp
 *~
+*.ipa
+xcuserdata/
