@@ -41,7 +41,7 @@ struct SomaPaywallView: View {
 
         var subDescription: String {
             switch self {
-            case .yearly: return "Billed annually · Save 70% vs weekly"
+            case .yearly: return "Billed annually ($2.50 / mo)"
             case .monthly: return "Flexible monthly billing"
             case .weekly: return "Billed weekly"
             }
@@ -49,7 +49,7 @@ struct SomaPaywallView: View {
 
         var badgeText: String? {
             switch self {
-            case .yearly: return "BEST VALUE · SAVE 70% VS WEEKLY"
+            case .yearly: return "SAVE 70%"
             case .monthly: return nil
             case .weekly: return nil
             }
@@ -279,12 +279,14 @@ struct SomaPaywallView: View {
                         Text(plan.title)
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(SomaColors.navy)
+                            .lineLimit(1)
 
                         if let badge = plan.badgeText {
                             Text(badge)
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundColor(.white)
-                                .padding(.horizontal, 8)
+                                .lineLimit(1)
+                                .padding(.horizontal, 7)
                                 .padding(.vertical, 3)
                                 .background(
                                     Capsule()
@@ -296,6 +298,7 @@ struct SomaPaywallView: View {
                     Text(plan.subDescription)
                         .font(.system(size: 12, weight: .regular))
                         .foregroundColor(SomaColors.subtext)
+                        .lineLimit(1)
                 }
 
                 Spacer()

@@ -108,18 +108,20 @@ struct AISettingsDetailView: View {
                 featureRow(
                     icon: "lock.shield.fill",
                     iconColor: SomaColors.emerald,
-                    title: "Private & Stateless",
-                    subtitle: "Photos and voice notes are never stored on cloud servers"
+                    title: "Private AI Analysis",
+                    subtitle: "Meal scans are analyzed in secure, stateless sessions and never linked to your identity"
                 )
 
                 featureRow(
                     icon: "internaldrive.fill",
                     iconColor: SomaColors.iris,
-                    title: "On-Device History",
-                    subtitle: "All journal entries and metrics remain on your iPhone"
+                    title: "On-Device Storage",
+                    subtitle: "Your meal journal, voice audio, and personal targets stay on your iPhone"
                 )
             } header: {
                 Text("PRIVACY")
+            } footer: {
+                Text("Soma does not require an account. AI nutritional estimates are processed securely and statelessly.")
             }
         }
         .listStyle(.insetGrouped)
