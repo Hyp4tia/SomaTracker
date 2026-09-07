@@ -76,45 +76,28 @@ struct WeeklyBarChart: View {
             HStack(alignment: .bottom, spacing: 10) {
                 yAxisLabels
 
-                ZStack(alignment: .bottom) {
-                    // Subtle target goal reference line
-                    if calorieGoal > 0 && calorieGoal < maxValue {
-                        let goalRatio = CGFloat(Double(calorieGoal) / Double(maxValue))
-                        let goalY = goalRatio * barHeight
+                HStack(alignment: .bottom, spacing: 16) {
+                    ForEach(chartDays) { day in
+                        GeometryReader { proxy in
+                            let barH = proxy.size.height * day.normalizedValue(for: maxValue)
 
-                        DashedLine()
-                            .stroke(
-                                SomaColors.white.opacity(0.32),
-                                style: StrokeStyle(lineWidth: 1, dash: [4, 3])
-                            )
-                            .frame(height: 1)
-                            .offset(y: -goalY)
-                            .allowsHitTesting(false)
-                    }
-
-                    HStack(alignment: .bottom, spacing: 16) {
-                        ForEach(chartDays) { day in
-                            GeometryReader { proxy in
-                                let barH = proxy.size.height * day.normalizedValue(for: maxValue)
-
-                                VStack {
-                                    Spacer()
-                                    Capsule()
-                                        .fill(barFill(for: day))
-                                        .frame(height: barFrameHeight(for: day, fullHeight: barH))
-                                        .scaleEffect(selectedDay?.id == day.id ? 1.05 : 1.0, anchor: .bottom)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    guard day.hasData else { return }
-                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                                        if let selectedDate, calendar.isDate(selectedDate, inSameDayAs: day.date) {
-                                            self.selectedDate = nil
-                                        } else {
-                                            self.selectedDate = day.date
-                                        }
+                            VStack {
+                                Spacer()
+                                Capsule()
+                                    .fill(barFill(for: day))
+                                    .frame(height: barFrameHeight(for: day, fullHeight: barH))
+                                    .scaleEffect(selectedDay?.id == day.id ? 1.05 : 1.0, anchor: .bottom)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                guard day.hasData else { return }
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                    if let selectedDate, calendar.isDate(selectedDate, inSameDayAs: day.date) {
+                                        self.selectedDate = nil
+                                    } else {
+                                        self.selectedDate = day.date
                                     }
                                 }
                             }
@@ -253,15 +236,6 @@ private struct ChartDay: Identifiable {
             return "Today"
         }
         return date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
-    }
-}
-
-private struct DashedLine: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: 0, y: rect.midY))
-        path.addLine(to: CGPoint(x: rect.width, y: rect.midY))
-        return path
     }
 }
 
