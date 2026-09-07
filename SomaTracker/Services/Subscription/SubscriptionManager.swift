@@ -32,6 +32,13 @@ final class SubscriptionManager: NSObject {
     var isRestoring: Bool = false
     var lastErrorMessage: String? = nil
 
+    /// Active subscription tier / plan name (e.g. "Annual Plan", "Developer Testing Pass")
+    var activePlanName: String? = nil
+    /// Billing duration/frequency (e.g. "1 Year", "Unlimited Access")
+    var activePlanDuration: String? = nil
+    /// Expiration or renewal date for StoreKit subscription
+    var subscriptionExpirationDate: Date? = nil
+
     /// Free scans remaining for un-subscribed users (starts at 3)
     var remainingFreeScans: Int {
         didSet {
@@ -52,6 +59,13 @@ final class SubscriptionManager: NSObject {
             UserDefaults.standard.set(3, forKey: "soma_remaining_free_scans")
         } else {
             self.remainingFreeScans = UserDefaults.standard.integer(forKey: "soma_remaining_free_scans")
+        }
+
+        // Initialize Pro status with dev access if active
+        if DevAccessManager.isDevAccessActive {
+            self.isPro = true
+            self.activePlanName = "Developer Testing Pass"
+            self.activePlanDuration = "Unlimited Access"
         }
 
         super.init()
@@ -105,21 +119,50 @@ final class SubscriptionManager: NSObject {
 
     func checkCurrentEntitlements() async {
         var hasActivePro = false
+        var planName: String? = nil
+        var planDuration: String? = nil
+        var expDate: Date? = nil
 
         for await result in Transaction.currentEntitlements {
             if let transaction = try? Self.checkVerified(result) {
                 if ProductID.allRawValues.contains(transaction.productID) {
                     if transaction.revocationDate == nil {
                         hasActivePro = true
+                        expDate = transaction.expirationDate
+                        switch transaction.productID {
+                        case ProductID.yearly.rawValue:
+                            planName = "Annual Plan"
+                            planDuration = "1 Year"
+                        case ProductID.monthly.rawValue:
+                            planName = "Monthly Plan"
+                            planDuration = "1 Month"
+                        case ProductID.weekly.rawValue:
+                            planName = "Weekly Plan"
+                            planDuration = "1 Week"
+                        default:
+                            planName = "Soma Pro"
+                            planDuration = "Auto-Renewable"
+                        }
                         break
                     }
                 }
             }
         }
 
-        let active = hasActivePro
+        let isDev = DevAccessManager.isDevAccessActive
+        let active = hasActivePro || isDev
+
+        if isDev && !hasActivePro {
+            planName = "Developer Testing Pass"
+            planDuration = "Unlimited Access"
+            expDate = nil
+        }
+
         await MainActor.run {
             self.isPro = active
+            self.activePlanName = planName
+            self.activePlanDuration = planDuration
+            self.subscriptionExpirationDate = expDate
         }
     }
 
@@ -171,6 +214,10 @@ final class SubscriptionManager: NSObject {
             await checkCurrentEntitlements()
             return isPro
         } catch {
+            if DevAccessManager.isDevAccessActive {
+                self.isPro = true
+                return true
+            }
             lastErrorMessage = "Failed to restore purchases: \(error.localizedDescription)"
             return false
         }
@@ -213,10 +260,71 @@ final class SubscriptionManager: NSObject {
             isExpired = false
         }
 
-        let active = !isRevoked && !isExpired && ProductID.allRawValues.contains(transaction.productID)
+        let hasStoreKitPro = !isRevoked && !isExpired && ProductID.allRawValues.contains(transaction.productID)
+        let isDev = DevAccessManager.isDevAccessActive
+        let active = hasStoreKitPro || isDev
+
+        var planName: String? = nil
+        var planDuration: String? = nil
+        var expDate: Date? = nil
+
+        if hasStoreKitPro {
+            expDate = transaction.expirationDate
+            switch transaction.productID {
+            case ProductID.yearly.rawValue:
+                planName = "Annual Plan"
+                planDuration = "1 Year"
+            case ProductID.monthly.rawValue:
+                planName = "Monthly Plan"
+                planDuration = "1 Month"
+            case ProductID.weekly.rawValue:
+                planName = "Weekly Plan"
+                planDuration = "1 Week"
+            default:
+                planName = "Soma Pro"
+                planDuration = "Auto-Renewable"
+            }
+        } else if isDev {
+            planName = "Developer Testing Pass"
+            planDuration = "Unlimited Access"
+            expDate = nil
+        }
 
         await MainActor.run {
             self.isPro = active
+            self.activePlanName = planName
+            self.activePlanDuration = planDuration
+            self.subscriptionExpirationDate = expDate
         }
+    }
+
+    // MARK: - Dev Access (Temporary for Testing - Easy to Remove)
+
+    @MainActor
+    func redeemCode(_ code: String) -> DevRedeemResult {
+        let result = DevAccessManager.redeem(code: code)
+        switch result {
+        case .unlocked:
+            self.isPro = true
+            self.activePlanName = "Developer Testing Pass"
+            self.activePlanDuration = "Unlimited Access"
+            self.subscriptionExpirationDate = nil
+        case .revoked:
+            self.isPro = false
+            self.activePlanName = nil
+            self.activePlanDuration = nil
+            self.subscriptionExpirationDate = nil
+            Task {
+                await checkCurrentEntitlements()
+            }
+        case .invalid:
+            break
+        }
+        return result
+    }
+
+    @MainActor
+    func revokeDevAccess() {
+        _ = redeemCode("revoke")
     }
 }
