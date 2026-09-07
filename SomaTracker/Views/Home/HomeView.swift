@@ -18,6 +18,7 @@ struct HomeView: View {
     @State private var showHistorySheet = false
     @State private var dragOffset: CGFloat = 0
     @State private var isDraggingSheet = false
+    @State private var hasInitializedGoalStatus = false
 
     private var profile: UserProfile? {
         profiles.first
@@ -53,24 +54,70 @@ struct HomeView: View {
         activeLogs.reduce(0) { $0 + $1.totalCalories }
     }
 
+    private var isGoalReached: Bool {
+        consumedCalories >= dailyCalorieGoal && dailyCalorieGoal > 0
+    }
+
+    private var isOverGoal: Bool {
+        consumedCalories > dailyCalorieGoal && dailyCalorieGoal > 0
+    }
+
+    private var overCaloriesAmount: Int {
+        max(consumedCalories - dailyCalorieGoal, 0)
+    }
+
     private var remainingCalories: Int {
         max(dailyCalorieGoal - consumedCalories, 0)
     }
 
     private var displayedCalories: Int {
-        selectedMode == .remaining ? remainingCalories : consumedCalories
+        if selectedMode == .remaining {
+            return isOverGoal ? overCaloriesAmount : remainingCalories
+        } else {
+            return consumedCalories
+        }
     }
 
     private var displayedCalorieLabel: String {
-        selectedMode == .remaining ? "Remaining" : "Consumed"
+        if selectedMode == .remaining {
+            if isOverGoal {
+                return "Over Target"
+            } else if isGoalReached {
+                return "Goal Met"
+            } else {
+                return "Remaining"
+            }
+        } else {
+            return "Consumed"
+        }
     }
 
     private var heroSubtitle: String {
         if isViewingToday {
-            return "kcal · \(displayedCalorieLabel) Today"
+            if selectedMode == .remaining {
+                if isOverGoal {
+                    return "kcal · Over Target Today"
+                } else if isGoalReached {
+                    return "Daily target reached · Great job!"
+                } else {
+                    return "kcal · Remaining Today"
+                }
+            } else {
+                return "kcal · Consumed Today"
+            }
         } else {
             let dayString = targetDate.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
-            return "kcal · \(displayedCalorieLabel) · \(dayString)"
+            if selectedMode == .remaining {
+                if isOverGoal {
+                    return "kcal · Over Target · \(dayString)"
+                } else if isGoalReached {
+                    return "Daily target reached · \(dayString)"
+                } else {
+                    return "kcal · Remaining · \(dayString)"
+                }
+            } else {
+                return "kcal · Consumed · \(dayString)"
+            }
         }
     }
 
@@ -211,7 +258,7 @@ struct HomeView: View {
                         .padding(.horizontal, 24)
                         .padding(.top, 48)
 
-                    WeeklyBarChart(logs: logs, selectedDate: $selectedDate)
+                    WeeklyBarChart(logs: logs, selectedDate: $selectedDate, calorieGoal: dailyCalorieGoal)
                         .padding(.top, 36)
                         .padding(.horizontal, 16)
 
@@ -239,6 +286,14 @@ struct HomeView: View {
                 await healthKitManager.requestAuthorization()
                 await healthKitManager.refreshTodaySteps(modelContext: modelContext)
                 healthKitManager.startObserving(modelContext: modelContext)
+
+                hasInitializedGoalStatus = true
+            }
+            .onChange(of: isGoalReached) { wasReached, isReached in
+                guard hasInitializedGoalStatus, isViewingToday else { return }
+                if !wasReached && isReached {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
             }
         }
     }
@@ -304,9 +359,23 @@ struct HomeView: View {
                 showHistorySheet = true
             } label: {
                 ZStack {
-                    Color.clear
-                        .frame(width: 56, height: 56)
-                        .glassEffect(.regular, in: .circle)
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.white.opacity(0.35),
+                                            Color.white.opacity(0.10)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 1
+                                )
+                        )
+                        .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 3)
 
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 22, weight: .bold, design: .default))
@@ -347,11 +416,11 @@ struct HomeView: View {
                 .font(.system(size: 19 * scale, weight: .bold, design: .default))
                 .foregroundStyle(SomaColors.white)
                 .frame(width: 40 * scale, height: 40 * scale)
-                .background(Color.orange)
+                .background(SomaColors.coral)
                 .clipShape(RoundedRectangle(cornerRadius: 11 * scale, style: .continuous))
                 .padding(.top, 14 * scale)
 
-            Text(displayedCalories.formatted())
+            Text(isOverGoal && selectedMode == .remaining ? "+\(displayedCalories.formatted())" : displayedCalories.formatted())
                 .font(.system(size: 78 * scale, weight: .black, design: .default))
                 .foregroundStyle(Color(.label))
                 .lineLimit(1)
@@ -362,7 +431,7 @@ struct HomeView: View {
 
             HStack(spacing: 8) {
                 Text(heroSubtitle)
-                    .font(.system(size: 15, weight: .bold, design: .default))
+                    .font(.system(size: 15 * scale, weight: .bold, design: .default))
                     .foregroundStyle(Color(.secondaryLabel))
                     .animation(.snappy(duration: 0.22), value: heroSubtitle)
 
@@ -374,10 +443,10 @@ struct HomeView: View {
                         }
                     } label: {
                         Text("Today")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 11 * scale, weight: .bold))
                             .foregroundStyle(Color.orange)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
+                            .padding(.horizontal, 8 * scale)
+                            .padding(.vertical, 3 * scale)
                             .background(Color.orange.opacity(0.12))
                             .clipShape(Capsule())
                     }

@@ -3,10 +3,22 @@ import SwiftUI
 struct WeeklyBarChart: View {
     let logs: [DailyLog]
     @Binding var selectedDate: Date?
+    var calorieGoal: Int = 2_000
 
     @State private var isAnimated = false
 
-    private let maxValue = 4_000
+    /// Dynamically scales chart ceiling so bars feel filled and well-proportioned
+    private var maxValue: Int {
+        let maxConsumed = chartDays.map(\.value).max() ?? 0
+        let baseline = max(calorieGoal, 1_500)
+        let highest = max(maxConsumed, baseline)
+
+        // Scale ceiling to provide ~20% headroom, rounded to nearest 1,000 (minimum 2,000)
+        let scaled = Double(highest) * 1.2
+        let rounded = Int(ceil(scaled / 1_000.0)) * 1_000
+        return max(2_000, rounded)
+    }
+
     private let calendar = Calendar.current
 
     // Total layout heights
@@ -64,28 +76,45 @@ struct WeeklyBarChart: View {
             HStack(alignment: .bottom, spacing: 10) {
                 yAxisLabels
 
-                HStack(alignment: .bottom, spacing: 16) {
-                    ForEach(chartDays) { day in
-                        GeometryReader { proxy in
-                            let barH = proxy.size.height * day.normalizedValue
+                ZStack(alignment: .bottom) {
+                    // Subtle target goal reference line
+                    if calorieGoal > 0 && calorieGoal < maxValue {
+                        let goalRatio = CGFloat(Double(calorieGoal) / Double(maxValue))
+                        let goalY = goalRatio * barHeight
 
-                            VStack {
-                                Spacer()
-                                Capsule()
-                                    .fill(barFill(for: day))
-                                    .frame(height: barFrameHeight(for: day, fullHeight: barH))
-                                    .scaleEffect(selectedDay?.id == day.id ? 1.05 : 1.0, anchor: .bottom)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                guard day.hasData else { return }
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                                    if let selectedDate, calendar.isDate(selectedDate, inSameDayAs: day.date) {
-                                        self.selectedDate = nil
-                                    } else {
-                                        self.selectedDate = day.date
+                        DashedLine()
+                            .stroke(
+                                SomaColors.white.opacity(0.32),
+                                style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                            )
+                            .frame(height: 1)
+                            .offset(y: -goalY)
+                            .allowsHitTesting(false)
+                    }
+
+                    HStack(alignment: .bottom, spacing: 16) {
+                        ForEach(chartDays) { day in
+                            GeometryReader { proxy in
+                                let barH = proxy.size.height * day.normalizedValue(for: maxValue)
+
+                                VStack {
+                                    Spacer()
+                                    Capsule()
+                                        .fill(barFill(for: day))
+                                        .frame(height: barFrameHeight(for: day, fullHeight: barH))
+                                        .scaleEffect(selectedDay?.id == day.id ? 1.05 : 1.0, anchor: .bottom)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    guard day.hasData else { return }
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                        if let selectedDate, calendar.isDate(selectedDate, inSameDayAs: day.date) {
+                                            self.selectedDate = nil
+                                        } else {
+                                            self.selectedDate = day.date
+                                        }
                                     }
                                 }
                             }
@@ -159,8 +188,9 @@ struct WeeklyBarChart: View {
     }
 
     private var yAxisLabels: some View {
-        VStack(alignment: .leading) {
-            ForEach((0...4).reversed(), id: \.self) { value in
+        let maxK = maxValue / 1_000
+        return VStack(alignment: .leading) {
+            ForEach((0...maxK).reversed(), id: \.self) { value in
                 Text("\(value)k")
                     .font(.system(size: 12, weight: .bold, design: .default))
                     .foregroundStyle(SomaColors.white.opacity(0.65))
@@ -194,7 +224,6 @@ struct WeeklyBarChart: View {
             return ChartDay(
                 date: date,
                 value: calories,
-                maxValue: maxValue,
                 isToday: calendar.isDate(date, inSameDayAs: today),
                 hasData: hasAnyData
             )
@@ -205,14 +234,14 @@ struct WeeklyBarChart: View {
 private struct ChartDay: Identifiable {
     let date: Date
     let value: Int
-    let maxValue: Int
     let isToday: Bool
     let hasData: Bool
 
     var id: Date { date }
 
-    var normalizedValue: Double {
-        min(Double(value) / Double(maxValue), 1)
+    func normalizedValue(for maxValue: Int) -> Double {
+        guard maxValue > 0 else { return 0 }
+        return min(Double(value) / Double(maxValue), 1)
     }
 
     var label: String {
@@ -227,9 +256,18 @@ private struct ChartDay: Identifiable {
     }
 }
 
+private struct DashedLine: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: 0, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.width, y: rect.midY))
+        return path
+    }
+}
+
 #Preview {
     @Previewable @State var selectedDate: Date? = nil
-    WeeklyBarChart(logs: [], selectedDate: $selectedDate)
+    WeeklyBarChart(logs: [], selectedDate: $selectedDate, calorieGoal: 2_000)
         .padding()
         .background(SomaColors.navy)
 }

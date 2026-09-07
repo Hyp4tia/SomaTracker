@@ -36,11 +36,12 @@ enum LogCategory: String, CaseIterable, Identifiable {
 struct LogSheetView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(AppRouter.self) private var appRouter: AppRouter?
+    @Environment(TabRouter.self) private var tabRouter: TabRouter?
 
     @State private var selectedCategory: LogCategory = .calories
     @State private var displayValue = "0"
     @State private var descriptionText = ""
-    @State private var showAIMultimodalSheet = false
     @State private var subscriptionManager = SubscriptionManager.shared
     @State private var showPaywall = false
     @FocusState private var isDescriptionFocused: Bool
@@ -102,51 +103,32 @@ struct LogSheetView: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         dismiss()
                     } label: {
-                        ZStack {
-                            Color.clear
-                                .frame(width: 32, height: 32)
-                                .glassEffect(.regular, in: .circle)
-
-                            Image(systemName: "xmark")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(SomaColors.navy)
-                        }
-                        .frame(width: 32, height: 32)
-                        .contentShape(Circle())
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(SomaColors.navy)
                     }
-                    .buttonStyle(LiquidGlassButtonStyle())
                     .accessibilityLabel("Close")
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         if subscriptionManager.canUseAIFeatures {
-                            showAIMultimodalSheet = true
+                            appRouter?.showLogSheet = false
+                            dismiss()
+                            withAnimation(.snappy(duration: 0.2)) {
+                                tabRouter?.selectedTab = .ai
+                            }
+                            AppNavigationState.shared.triggerAction(.voice)
                         } else {
                             showPaywall = true
                         }
                     } label: {
-                        ZStack {
-                            Color.clear
-                                .frame(width: 32, height: 32)
-                                .glassEffect(.regular, in: .circle)
-
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(SomaColors.navy)
-                        }
-                        .frame(width: 32, height: 32)
-                        .contentShape(Circle())
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(SomaColors.navy)
                     }
-                    .buttonStyle(LiquidGlassButtonStyle())
-                    .accessibilityLabel("Log with Soma AI")
-                }
-            }
-            .sheet(isPresented: $showAIMultimodalSheet) {
-                AIMultimodalInputSheet { newEntry in
-                    newEntry.syncToFoodEntry(in: modelContext)
-                    dismiss()
+                    .accessibilityLabel("Record Voice Meal with Soma AI")
                 }
             }
             .sheet(isPresented: $showPaywall) {
@@ -353,5 +335,7 @@ struct LogSheetView: View {
 
 #Preview {
     LogSheetView()
+        .environment(AppRouter())
+        .environment(TabRouter())
         .modelContainer(PreviewData.container)
 }

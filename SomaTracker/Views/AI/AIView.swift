@@ -21,7 +21,6 @@ struct AIView: View {
     // Camera & Photo Capture
     @State private var showCameraCapture = false
     @State private var capturedImage: UIImage? = nil
-    @State private var showMultimodalSheet = false
 
     // Smart Text Input
     @State private var inputText = ""
@@ -39,6 +38,7 @@ struct AIView: View {
     // Subscription & Paywall
     @State private var subscriptionManager = SubscriptionManager.shared
     @State private var showPaywall = false
+    @State private var lastQuickActionDate: Date = .distantPast
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -174,12 +174,6 @@ struct AIView: View {
                 .ignoresSafeArea()
                 .background(Color.black.ignoresSafeArea())
         }
-        .sheet(isPresented: $showMultimodalSheet) {
-            AIMultimodalInputSheet { newEntry in
-                newEntry.syncToFoodEntry(in: modelContext)
-                selectedEntryForDetail = newEntry
-            }
-        }
         .sheet(isPresented: $showPaywall) {
             SomaPaywallView()
         }
@@ -199,6 +193,7 @@ struct AIView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .somaTriggerQuickAction)) { notif in
             if let action = notif.object as? AIQuickAction {
+                AppNavigationState.shared.pendingQuickAction = nil
                 executeQuickAction(action)
             }
         }
@@ -211,6 +206,10 @@ struct AIView: View {
     }
 
     private func executeQuickAction(_ action: AIQuickAction) {
+        let now = Date()
+        guard now.timeIntervalSince(lastQuickActionDate) > 0.8 else { return }
+        lastQuickActionDate = now
+
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         guard subscriptionManager.canUseAIFeatures else {
             showPaywall = true
@@ -222,7 +221,7 @@ struct AIView: View {
                 showCameraCapture = true
             }
         case .voice:
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                 if !speechService.isRecordingLive {
                     handleVoiceMemosButtonTap()
                 }
@@ -265,6 +264,7 @@ struct AIView: View {
                         .fill(subscriptionManager.isPro ? SomaColors.navy : SomaColors.navy.opacity(0.10))
                 )
             }
+            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 4)
@@ -435,6 +435,7 @@ struct AIView: View {
         .padding(18)
         .background(SomaColors.white)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 4)
     }
 

@@ -265,14 +265,16 @@ struct SomaPaywallView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         dismiss()
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 22))
-                            .foregroundColor(Color(uiColor: .systemGray3))
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(SomaColors.navy)
                     }
+                    .accessibilityLabel("Close")
                 }
             }
             .alert("Purchases Restored", isPresented: $showRestoreSuccessAlert) {
@@ -291,7 +293,7 @@ struct SomaPaywallView: View {
             }
             // MARK: - Dev Redeem Code Alerts (Temporary for Testing - Easy to Remove)
             .alert("Redeem Code", isPresented: $showRedeemCodeAlert) {
-                TextField("Code (e.g. dev67)", text: $redeemCodeInput)
+                TextField("Code (e.g. Soma_2026)", text: $redeemCodeInput)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                 Button("Redeem") {

@@ -46,6 +46,8 @@ struct ContentView: View {
                 .presentationDetents([.fraction(0.78)])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(Color(.systemBackground))
+                .environment(appRouter)
+                .environment(tabRouter)
         }
         .environment(appRouter)
         .environment(tabRouter)

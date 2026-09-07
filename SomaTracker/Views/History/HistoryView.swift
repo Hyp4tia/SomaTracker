@@ -119,19 +119,10 @@ struct HistoryView: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         dismiss()
                     } label: {
-                        ZStack {
-                            Color.clear
-                                .frame(width: 32, height: 32)
-                                .glassEffect(.regular, in: .circle)
-
-                            Image(systemName: "xmark")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(SomaColors.navy)
-                        }
-                        .frame(width: 32, height: 32)
-                        .contentShape(Circle())
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(SomaColors.navy)
                     }
-                    .buttonStyle(LiquidGlassButtonStyle())
                     .accessibilityLabel("Close")
                 }
             }
@@ -141,19 +132,10 @@ struct HistoryView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     showExportSheet = true
                 } label: {
-                    ZStack {
-                        Color.clear
-                            .frame(width: 32, height: 32)
-                            .glassEffect(.regular, in: .circle)
-
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(SomaColors.navy)
-                    }
-                    .frame(width: 32, height: 32)
-                    .contentShape(Circle())
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(SomaColors.navy)
                 }
-                .buttonStyle(LiquidGlassButtonStyle())
                 .accessibilityLabel("Export Data")
             }
         }
@@ -887,19 +869,10 @@ struct EditHistoryEntrySheet: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         dismiss()
                     } label: {
-                        ZStack {
-                            Color.clear
-                                .frame(width: 32, height: 32)
-                                .glassEffect(.regular, in: .circle)
-
-                            Image(systemName: "xmark")
-                                .font(.system(size: 13, weight: .bold))
-                                .foregroundStyle(SomaColors.navy)
-                        }
-                        .frame(width: 32, height: 32)
-                        .contentShape(Circle())
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(SomaColors.navy)
                     }
-                    .buttonStyle(LiquidGlassButtonStyle())
                     .accessibilityLabel("Close")
                 }
             }

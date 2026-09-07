@@ -1,10 +1,12 @@
 import SwiftUI
 import SwiftData
 import StoreKit
+import UserNotifications
 
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(AppRouter.self) private var appRouter
+    @Environment(TabRouter.self) private var tabRouter
     @Query private var profiles: [UserProfile]
     @Query private var logs: [DailyLog]
 
@@ -678,17 +680,51 @@ struct SettingsView: View {
 
     private func resetAllData() {
         UINotificationFeedbackGenerator().notificationOccurred(.warning)
-        do {
-            try modelContext.delete(model: FoodEntry.self)
-            try modelContext.delete(model: WaterEntry.self)
-            try modelContext.delete(model: DailyLog.self)
-            try modelContext.delete(model: AIMealEntry.self)
-            try modelContext.delete(model: UserProfile.self)
-            try modelContext.save()
-        } catch {
-            print("[Settings] Reset failed: \(error.localizedDescription)")
+
+        // 1. Explicitly fetch and delete in-memory models so active @Query observers immediately clear
+        let foodEntries = (try? modelContext.fetch(FetchDescriptor<FoodEntry>())) ?? []
+        for entry in foodEntries { modelContext.delete(entry) }
+
+        let waterEntries = (try? modelContext.fetch(FetchDescriptor<WaterEntry>())) ?? []
+        for entry in waterEntries { modelContext.delete(entry) }
+
+        let allLogs = (try? modelContext.fetch(FetchDescriptor<DailyLog>())) ?? []
+        for log in allLogs { modelContext.delete(log) }
+
+        let aiEntries = (try? modelContext.fetch(FetchDescriptor<AIMealEntry>())) ?? []
+        for entry in aiEntries { modelContext.delete(entry) }
+
+        let allProfiles = (try? modelContext.fetch(FetchDescriptor<UserProfile>())) ?? []
+        for profile in allProfiles { modelContext.delete(profile) }
+
+        // 2. Run batch deletes on the persistent store
+        try? modelContext.delete(model: FoodEntry.self)
+        try? modelContext.delete(model: WaterEntry.self)
+        try? modelContext.delete(model: DailyLog.self)
+        try? modelContext.delete(model: AIMealEntry.self)
+        try? modelContext.delete(model: UserProfile.self)
+
+        try? modelContext.save()
+        modelContext.processPendingChanges()
+
+        // 3. Remove all saved voice memo audio recordings from device storage (.wav, .m4a)
+        let fileManager = FileManager.default
+        if let docsURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first,
+           let fileURLs = try? fileManager.contentsOfDirectory(at: docsURL, includingPropertiesForKeys: nil) {
+            for fileURL in fileURLs {
+                let name = fileURL.lastPathComponent
+                if name.hasPrefix("voice_memo_") || fileURL.pathExtension == "m4a" || fileURL.pathExtension == "wav" {
+                    try? fileManager.removeItem(at: fileURL)
+                }
+            }
         }
 
+        // 4. Cancel all pending and delivered local notification requests
+        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+
+        // 5. Reset navigation to Home and return to Onboarding (Preserving subscription / free scans)
+        tabRouter.selectedTab = .home
         appRouter.hasCompletedOnboarding = false
     }
 

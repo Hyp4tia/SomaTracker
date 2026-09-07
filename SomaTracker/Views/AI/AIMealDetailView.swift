@@ -129,22 +129,7 @@ struct AIMealDetailView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .hideTabBarWithCoordinator()
-        .navigationBarBackButtonHidden(true)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    playbackService.stop()
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.backward")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color(.label))
-                        .frame(width: 36, height: 36)
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(Circle())
-                }
-                .accessibilityLabel("Back")
-            }
 
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -181,11 +166,8 @@ struct AIMealDetailView: View {
                     }
                 } label: {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Color(.label))
-                        .frame(width: 36, height: 36)
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(Circle())
                 }
                 .accessibilityLabel("More Options")
             }
@@ -208,7 +190,6 @@ struct AIMealDetailView: View {
         .sheet(isPresented: $showEditDetailsSheet) {
             editDetailsModal
         }
-        .enableNativeSwipeToGoBack()
     }
 
     // MARK: - Voice Note Section

@@ -17,12 +17,9 @@ struct MediaCarouselView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            // Photo Card Container
-            TabView(selection: $currentIndex) {
-                if photos.isEmpty {
-                    placeholderCard
-                        .tag(0)
-                } else {
+            if photos.count > 1 {
+                // Multi-photo Carousel with Paging
+                TabView(selection: $currentIndex) {
                     ForEach(0..<photos.count, id: \.self) { index in
                         if let uiImage = UIImage(data: photos[index]) {
                             Image(uiImage: uiImage)
@@ -39,15 +36,13 @@ struct MediaCarouselView: View {
                         }
                     }
                 }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: 280)
-            .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 6)
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(height: 280)
+                .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 6)
 
-            // Pagination Dots (e.g. 5 dots matching mockup)
-            if effectiveCount > 1 {
+                // Pagination Dots
                 HStack(spacing: 6) {
-                    ForEach(0..<effectiveCount, id: \.self) { index in
+                    ForEach(0..<photos.count, id: \.self) { index in
                         Circle()
                             .fill(currentIndex == index ? SomaColors.navy : Color(.systemGray4))
                             .frame(width: currentIndex == index ? 6.5 : 5.5, height: currentIndex == index ? 6.5 : 5.5)
@@ -55,6 +50,22 @@ struct MediaCarouselView: View {
                     }
                 }
                 .padding(.top, 2)
+            } else if let firstPhoto = photos.first, let uiImage = UIImage(data: firstPhoto) {
+                // Single Photo Static Card (Zero gesture interception)
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 280)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 6)
+            } else {
+                // Placeholder Static Card (Zero gesture interception)
+                placeholderCard
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 280)
+                    .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: 6)
             }
         }
     }
