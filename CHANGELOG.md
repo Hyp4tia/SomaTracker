@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [Unreleased] - 2026-09-18e (speech vocabulary)
+
+### Added
+- **`SomaSpeechVocabulary`, a curated 97-phrase recognizer vocabulary** (Apple caps `contextualStrings` at 100): 42 Egyptian dishes, 28 venues and delivery apps in both scripts, 19 dialect phrasings and portion sizes, and 8 units and logging verbs. It replaces the previous 23-entry list, which was all generic measurement words ("grams", "calories", "water") that already live in the system vocabulary. Entries now target what a Saudi-trained Arabic model actually gets wrong: كشري، حواوشي، فطري مشلتت، ممبار، كوباية مية، شاي بلبن، بريد فاست، كوك دور، سيلانترو، and the English brand spellings dictation writes in Arabic letters.
+
+### Changed
+- **The Arabic recognizer locale is now picked deterministically**, preferring an Egyptian model if Apple ever ships one, then `ar-SA`, instead of taking whatever the unordered `supportedLocales()` set returned first. Apple offers only `ar-SA` for Arabic today, in both the old and the new Speech API, which is the real ceiling on Egyptian-dialect accuracy.
+
+---
+
 ## [Unreleased] - 2026-09-18d (water logs, brand names, iOS 27 vision)
 
 ### Added

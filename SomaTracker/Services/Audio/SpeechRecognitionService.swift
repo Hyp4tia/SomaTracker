@@ -88,11 +88,17 @@ final class SpeechRecognitionService: NSObject, AVAudioRecorderDelegate {
             return rec
         }
 
-        // 2. If Arabic was selected, look for any supported Arabic locale in Apple Speech
+        // 2. If Arabic was selected, take the closest Arabic locale Apple actually offers. Sorted
+        // first so the pick is deterministic: Apple ships ar-SA today, and an Egyptian model would
+        // win automatically the day one appears.
         if selectedLanguage == .arabic {
-            let supported = SFSpeechRecognizer.supportedLocales()
-            if let ar = supported.first(where: { $0.identifier.hasPrefix("ar") }),
-               let rec = SFSpeechRecognizer(locale: ar), rec.isAvailable {
+            let arabic = SFSpeechRecognizer.supportedLocales()
+                .filter { $0.identifier.hasPrefix("ar") }
+                .sorted { $0.identifier < $1.identifier }
+            let preferred = arabic.first { $0.identifier == "ar-EG" }
+                ?? arabic.first { $0.identifier == "ar-SA" }
+                ?? arabic.first
+            if let preferred, let rec = SFSpeechRecognizer(locale: preferred), rec.isAvailable {
                 return rec
             }
         }
@@ -245,11 +251,13 @@ final class SpeechRecognitionService: NSObject, AVAudioRecorderDelegate {
             request.addsPunctuation = true
         }
 
-        // Universal measurement and nutrition hints (avoids biasing silence into specific food names)
-        request.contextualStrings = [
-            "جرام", "كالوري", "سعرة", "سعرات", "بروتين", "كارب", "دهون", "لتر", "مل", "شربت", "أكلت",
-            "grams", "calories", "kcal", "protein", "carbs", "fat", "water", "liter", "ml", "drank", "ate"
-        ]
+        // Domain vocabulary: Egyptian dishes, venues and the phrasings dictation mangles, curated
+        // against Apple's 100-phrase ceiling for contextualStrings. Generic words are left out on
+        // purpose: they are in the system vocabulary already, and every slot spent on one is a slot
+        // taken from a word the recognizer would otherwise write as something else.
+        let vocabulary = SomaSpeechVocabulary.contextualStrings
+        assert(vocabulary.count <= 100, "Apple allows at most 100 contextual phrases, found \(vocabulary.count)")
+        request.contextualStrings = vocabulary
         self.recognitionRequest = request
 
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
