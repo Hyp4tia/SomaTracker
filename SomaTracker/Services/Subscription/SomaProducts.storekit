@@ -1,4 +1,14 @@
 {
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
   "identifier" : "SOMA_STOREKIT_CONFIG",
   "nonRenewingSubscriptions" : [
 
@@ -7,13 +17,22 @@
 
   ],
   "settings" : {
+    "_askToBuyEnabled" : false,
+    "_billingGracePeriodEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_disableDialogs" : false,
     "_failTransactionsEnabled" : false,
     "_locale" : "en_US",
-    "_storefront" : "USA",
+    "_renewalBillingIssuesEnabled" : false,
+    "_storefront" : "EGY",
     "_storeKitErrors" : [
 
-    ]
+    ],
+    "_timeRate" : 0
   },
+  "subscriptionBundleGroups" : [
+
+  ],
   "subscriptionGroups" : [
     {
       "id" : "2147483647",
@@ -30,14 +49,25 @@
           "adHocOffers" : [
 
           ],
+          "billingPlans" : [
+            {
+              "billingPlanType" : "BILLED_UPFRONT",
+              "commitmentDisplayPrice" : "29.99",
+              "displayPrice" : "29.99",
+              "internalID" : "F4A5F6FA",
+              "isEnabled" : true
+            }
+          ],
           "codeOffers" : [
 
           ],
-          "displayPrice" : "1.99",
+          "displayPrice" : "29.99",
           "familyShareable" : false,
           "groupNumber" : 3,
           "internalID" : "soma_pro_weekly_id",
-          "introductoryOffer" : null,
+          "introductoryOffers" : [
+
+          ],
           "localizations" : [
             {
               "description" : "Unlimited AI Voice & Vision, billed weekly.",
@@ -49,20 +79,34 @@
           "recurringSubscriptionPeriod" : "P1W",
           "referenceName" : "Soma Pro Weekly",
           "subscriptionGroupID" : "2147483647",
-          "type" : "RecurringSubscription"
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
         },
         {
           "adHocOffers" : [
 
           ],
+          "billingPlans" : [
+            {
+              "billingPlanType" : "BILLED_UPFRONT",
+              "commitmentDisplayPrice" : "69.99",
+              "displayPrice" : "69.99",
+              "internalID" : "A0890DAF",
+              "isEnabled" : true
+            }
+          ],
           "codeOffers" : [
 
           ],
-          "displayPrice" : "4.99",
+          "displayPrice" : "69.99",
           "familyShareable" : false,
           "groupNumber" : 2,
           "internalID" : "soma_pro_monthly_id",
-          "introductoryOffer" : null,
+          "introductoryOffers" : [
+
+          ],
           "localizations" : [
             {
               "description" : "Unlimited AI Voice & Vision, billed monthly.",
@@ -74,20 +118,34 @@
           "recurringSubscriptionPeriod" : "P1M",
           "referenceName" : "Soma Pro Monthly",
           "subscriptionGroupID" : "2147483647",
-          "type" : "RecurringSubscription"
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
         },
         {
           "adHocOffers" : [
 
           ],
+          "billingPlans" : [
+            {
+              "billingPlanType" : "BILLED_UPFRONT",
+              "commitmentDisplayPrice" : "599.99",
+              "displayPrice" : "599.99",
+              "internalID" : "458704C2",
+              "isEnabled" : true
+            }
+          ],
           "codeOffers" : [
 
           ],
-          "displayPrice" : "29.99",
+          "displayPrice" : "599.99",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "soma_pro_yearly_id",
-          "introductoryOffer" : null,
+          "introductoryOffers" : [
+
+          ],
           "localizations" : [
             {
               "description" : "Unlimited AI Voice & Vision, billed annually.",
@@ -99,13 +157,19 @@
           "recurringSubscriptionPeriod" : "P1Y",
           "referenceName" : "Soma Pro Annual",
           "subscriptionGroupID" : "2147483647",
-          "type" : "RecurringSubscription"
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
         }
       ]
     }
   ],
+  "subscriptionSuiteGroups" : [
+
+  ],
   "version" : {
-    "major" : 3,
-    "minor" : 0
+    "major" : 6,
+    "minor" : 3
   }
 }

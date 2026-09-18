@@ -10,22 +10,8 @@ import SwiftData
 
 @main
 struct SomaTrackerApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            UserProfile.self,
-            DailyLog.self,
-            FoodEntry.self,
-            WaterEntry.self,
-            AIMealEntry.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
+    var sharedModelContainer: ModelContainer = SomaPersistence.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -33,6 +19,12 @@ struct SomaTrackerApp: App {
                 // The app uses a fixed navy + white brand design that isn't built
                 // for dark-mode adaptation, so lock it to its intended appearance.
                 .preferredColorScheme(.light)
+                .onChange(of: scenePhase) { _, phase in
+                    // Notification permission can be revoked in iOS Settings while Soma is
+                    // backgrounded, so the reminders toggle is re-checked on every activation.
+                    guard phase == .active else { return }
+                    Task { await NotificationManager.shared.refreshPermissionState() }
+                }
         }
         .modelContainer(sharedModelContainer)
     }

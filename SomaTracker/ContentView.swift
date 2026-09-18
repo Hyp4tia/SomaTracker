@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var appRouter = AppRouter()
     @State private var tabRouter = TabRouter()
     @State private var healthKitManager = HealthKitManager()
+    @State private var showReminderOptIn = false
 
     var body: some View {
         if !appRouter.hasCompletedOnboarding {
@@ -40,6 +41,12 @@ struct ContentView: View {
             .tabItem { Label("Settings", systemImage: "gearshape") }
             .tag(Tab.settings)
         }
+        .sheet(isPresented: $showReminderOptIn) {
+            ReminderOptInView()
+                .preferredColorScheme(.light)
+                .presentationDetents([.height(470)])
+                .presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $appRouter.showLogSheet) {
             LogSheetView()
                 .preferredColorScheme(.light)
@@ -63,6 +70,25 @@ struct ContentView: View {
             if AppNavigationState.shared.pendingQuickAction != nil {
                 tabRouter.selectedTab = .ai
             }
+            offerReminderOptInIfNeeded()
+        }
+    }
+
+    /// Asks once, on the first launch after onboarding, so the reminder question arrives with
+    /// context instead of as a cold system dialog in the middle of a log. The stored flag keeps
+    /// it to a single ask per install; after that the toggle in Settings owns it.
+    private func offerReminderOptInIfNeeded() {
+        let key = "hasOfferedReminderOptIn"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        // Someone who already turned reminders on has answered this question.
+        guard !NotificationManager.shared.isEnabled else { return }
+        UserDefaults.standard.set(true, forKey: key)
+
+        // Let the tab view finish appearing: a sheet presented during the onboarding
+        // transition can be dropped by SwiftUI.
+        Task {
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            showReminderOptIn = true
         }
     }
 

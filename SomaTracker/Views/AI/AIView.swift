@@ -177,6 +177,11 @@ struct AIView: View {
         .sheet(isPresented: $showPaywall) {
             SomaPaywallView()
         }
+        .onChange(of: showPaywall) { _, isShowing in
+            // A photo held back by the paywall is analysed as soon as the user comes back.
+            guard !isShowing, let image = capturedImage else { return }
+            handleCapturedPhoto(image)
+        }
         .alert("Microphone Access Required", isPresented: $showMicPermissionAlert) {
             Button("Open Settings") {
                 if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
@@ -215,6 +220,7 @@ struct AIView: View {
             showPaywall = true
             return
         }
+        guard !isAnalyzingAI else { return }
         switch action {
         case .camera:
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
@@ -488,9 +494,12 @@ struct AIView: View {
 
     private func deleteJournalEntry(_ entry: AIMealEntry) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let dayLog = entry.dailyLog
         withAnimation(.snappy(duration: 0.25)) {
             entry.deleteWithSyncedEntries(in: modelContext)
         }
+        // Health keeps its own copy, so a removal has to be mirrored too.
+        Task { await HealthSyncService.shared.syncDay(dayLog) }
         showToast("Deleted \(entry.title.isEmpty ? "meal entry" : entry.title)")
     }
 
@@ -503,6 +512,44 @@ struct AIView: View {
             return analysisLocation
         }
         return !gpsLocation.isEmpty ? gpsLocation : "Soma AI Log"
+    }
+
+    /// Placeholder values the AI echoes back when it has no real location to report.
+    private static let locationPlaceholders: Set<String> = [
+        "Voice Memo", "Quick AI Log", "Captured with Camera"
+    ]
+
+    /// Shown when the cloud call failed and the on-device engine found nothing either: the user
+    /// needs to know Soma AI was unreachable, not that their own log was empty.
+    private var unreachableAIMessage: String {
+        localized("تعذر الوصول إلى Soma AI. تحقق من الاتصال وحاول مرة أخرى.", "Couldn't reach Soma AI. Please try again.")
+    }
+
+    private func localized(_ arabic: String, _ english: String) -> String {
+        speechService.selectedLanguage == .arabic ? arabic : english
+    }
+
+    /// Location stored the moment an entry is created: the AI's own when it reported one,
+    /// otherwise a neutral label. `patchLocation` swaps in the geocoded value once it resolves.
+    private func provisionalLocation(from analysisLocation: String) -> String {
+        let trimmed = analysisLocation.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || Self.locationPlaceholders.contains(trimmed) ? "Soma AI Log" : trimmed
+    }
+
+    /// Reverse geocoding is a network round trip, so it runs after the entry is saved and on
+    /// screen, and the resolved value is patched in behind it. Awaiting it first added a dead
+    /// beat to every AI log and let a geocoder hiccup delay the entry itself.
+    private func patchLocation(of entry: AIMealEntry, from analysisLocation: String) {
+        Task {
+            let resolved = await resolveMealLocation(from: analysisLocation)
+            guard !resolved.isEmpty, resolved != entry.location, entry.modelContext != nil else { return }
+            entry.location = resolved
+            do {
+                try modelContext.save()
+            } catch {
+                print("[AIView] Location patch failed: \(error.localizedDescription)")
+            }
+        }
     }
 
     // MARK: - Logic & Actions
@@ -557,6 +604,26 @@ struct AIView: View {
                     return
                 }
 
+                // Hydration is exact from on-device parsing, so it skips the cloud call
+                // entirely rather than spending a scan on a glass of water.
+                let localWater = FoodNutritionDatabase.shared.parseInput(trimmedSpeech)
+                if localWater.isWater {
+                    await MainActor.run {
+                        logLocalHydration(
+                            amountML: localWater.waterML,
+                            summary: localWater.summary,
+                            story: trimmedSpeech,
+                            voiceRelativePath: result.relativePath,
+                            waveformSamples: result.samples,
+                            duration: result.duration
+                        )
+                        withAnimation(.snappy(duration: 0.35)) {
+                            isAnalyzingAI = false
+                        }
+                    }
+                    return
+                }
+
                 // Parse speech via AI Router (uses Gemini Flash if configured, or on-device FoodNutritionDatabase)
                 let analysis = await AIRouter.shared.processMultimodalMeal(
                     notes: trimmedSpeech,
@@ -576,12 +643,15 @@ struct AIView: View {
                             isAnalyzingAI = false
                         }
                         UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                        showToast(speechService.selectedLanguage == .arabic ? "لم يتم التعرف على طعام أو شراب. برجاء المحاولة مرة أخرى." : "No food or drink detected. Please try again.")
+                        let emptyResultMessage = analysis.engine == .onDeviceFallback
+                            ? unreachableAIMessage
+                            : localized("لم يتم التعرف على طعام أو شراب. برجاء المحاولة مرة أخرى.", "No food or drink detected. Please try again.")
+                        showToast(emptyResultMessage)
                     }
                     return
                 }
 
-                let finalLocation = await resolveMealLocation(from: analysis.location)
+                let finalLocation = provisionalLocation(from: analysis.location)
 
                 await MainActor.run {
                     let todayLog = DailyLog.fetchOrCreateToday(context: modelContext)
@@ -591,43 +661,10 @@ struct AIView: View {
                         ? analysis.storyNarrative
                         : (!trimmedSpeech.isEmpty ? trimmedSpeech : analysis.title)
 
-                    let parsedWaterCheck = FoodNutritionDatabase.shared.parseInput(story)
-                    if parsedWaterCheck.isWater {
-                        let water = WaterEntry(
-                            amount: parsedWaterCheck.waterML,
-                            timestamp: .now,
-                            label: "AI Voice Log",
-                            aiMealEntryId: aiEntryId
-                        )
-                        todayLog.waterEntries.append(water)
-
-                        let aiEntry = AIMealEntry(
-                            id: aiEntryId,
-                            title: "Hydration (\(parsedWaterCheck.waterML) ml)",
-                            location: finalLocation,
-                            storyText: story,
-                            calories: 0,
-                            proteinG: 0,
-                            carbsG: 0,
-                            fatG: 0,
-                            photoDataList: [],
-                            voiceAudioRelativePath: result.relativePath,
-                            voiceWaveformSamples: result.samples,
-                            voiceDurationSeconds: result.duration,
-                            breakdownNotes: parsedWaterCheck.summary
-                        )
-                        aiEntry.dailyLog = todayLog
-                        modelContext.insert(aiEntry)
-
-                        try? modelContext.save()
-                        withAnimation(.snappy(duration: 0.35)) {
-                            isAnalyzingAI = false
-                        }
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                        showToast(parsedWaterCheck.summary)
-                        return
-                    }
-
+                    // Hydration is decided before the cloud call from what the user actually
+                    // said, so nothing here re-reads the AI's own narrative for water: doing that
+                    // turned meals the model merely described as "with a glass of water" into a
+                    // fabricated hydration log whenever the call misbehaved.
                     let foodEntry = FoodEntry(
                         name: analysis.title,
                         calories: analysis.calories,
@@ -658,11 +695,13 @@ struct AIView: View {
                     aiEntry.dailyLog = todayLog
                     modelContext.insert(aiEntry)
 
-                    subscriptionManager.consumeFreeScanIfFreeUser()
-                    try? modelContext.save()
+                    let saved = persistContext()
+                    if saved { subscriptionManager.consumeFreeScanIfFreeUser() }
                     withAnimation(.snappy(duration: 0.35)) {
                         isAnalyzingAI = false
                     }
+                    guard saved else { return }
+                    patchLocation(of: aiEntry, from: analysis.location)
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                     if subscriptionManager.isPro {
                         showToast("Logged \(analysis.title) · \(analysis.calories) kcal")
@@ -676,6 +715,7 @@ struct AIView: View {
 
         } else {
             // START RECORDING
+            guard !isAnalyzingAI else { return }
             guard subscriptionManager.canUseAIFeatures else {
                 showPaywall = true
                 return
@@ -715,6 +755,17 @@ struct AIView: View {
     private func processTextInput() {
         let query = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return }
+        guard !isAnalyzingAI else { return }
+
+        // Hydration is exact from on-device parsing: no cloud round trip, no AI credit.
+        let localWater = FoodNutritionDatabase.shared.parseInput(query)
+        if localWater.isWater {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            inputText = ""
+            isInputFocused = false
+            logLocalHydration(amountML: localWater.waterML, summary: localWater.summary, story: query)
+            return
+        }
 
         guard subscriptionManager.canUseAIFeatures else {
             showPaywall = true
@@ -744,61 +795,22 @@ struct AIView: View {
                         isAnalyzingAI = false
                     }
                     UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                    showToast(speechService.selectedLanguage == .arabic ? "لم يتم التعرف على طعام أو شراب في النص." : "No food or drink recognized in text.")
+                    let emptyResultMessage = analysis.engine == .onDeviceFallback
+                        ? unreachableAIMessage
+                        : localized("لم يتم التعرف على طعام أو شراب في النص.", "No food or drink recognized in text.")
+                    showToast(emptyResultMessage)
                 }
                 return
             }
 
-            let finalLocation = await resolveMealLocation(from: analysis.location)
+            let finalLocation = provisionalLocation(from: analysis.location)
 
             await MainActor.run {
                 let todayLog = DailyLog.fetchOrCreateToday(context: modelContext)
                 let aiEntryId = UUID()
 
-                let parsedWaterCheck = FoodNutritionDatabase.shared.parseInput(query)
-                if parsedWaterCheck.isWater {
-                    let water = WaterEntry(
-                        amount: parsedWaterCheck.waterML,
-                        timestamp: .now,
-                        label: "AI Log",
-                        aiMealEntryId: aiEntryId
-                    )
-                    todayLog.waterEntries.append(water)
-
-                    let aiEntry = AIMealEntry(
-                        id: aiEntryId,
-                        title: "Hydration (\(parsedWaterCheck.waterML) ml)",
-                        location: finalLocation,
-                        storyText: query,
-                        calories: 0,
-                        proteinG: 0,
-                        carbsG: 0,
-                        fatG: 0,
-                        photoDataList: [],
-                        voiceAudioRelativePath: nil,
-                        voiceWaveformSamples: [],
-                        voiceDurationSeconds: 0.0,
-                        breakdownNotes: parsedWaterCheck.summary
-                    )
-                    aiEntry.dailyLog = todayLog
-                    modelContext.insert(aiEntry)
-
-                    subscriptionManager.consumeFreeScanIfFreeUser()
-                    try? modelContext.save()
-                    withAnimation(.snappy(duration: 0.35)) {
-                        isAnalyzingAI = false
-                    }
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    if subscriptionManager.isPro {
-                        showToast(parsedWaterCheck.summary)
-                    } else if subscriptionManager.remainingFreeScans > 0 {
-                        showToast("\(parsedWaterCheck.summary) · \(subscriptionManager.remainingFreeScans) free logs left")
-                    } else {
-                        showToast("\(parsedWaterCheck.summary) · Free trial completed")
-                    }
-                    return
-                }
-
+                // Hydration was already decided from the typed text before the cloud call, so the
+                // result is never re-read for water here.
                 let foodEntry = FoodEntry(
                     name: analysis.title,
                     calories: analysis.calories,
@@ -829,11 +841,13 @@ struct AIView: View {
                 aiEntry.dailyLog = todayLog
                 modelContext.insert(aiEntry)
 
-                subscriptionManager.consumeFreeScanIfFreeUser()
-                try? modelContext.save()
+                let saved = persistContext()
+                if saved { subscriptionManager.consumeFreeScanIfFreeUser() }
                 withAnimation(.snappy(duration: 0.35)) {
                     isAnalyzingAI = false
                 }
+                guard saved else { return }
+                patchLocation(of: aiEntry, from: analysis.location)
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 if subscriptionManager.isPro {
                     showToast("Logged \(analysis.title) · \(analysis.calories) kcal")
@@ -847,12 +861,15 @@ struct AIView: View {
     }
 
     private func handleCapturedPhoto(_ image: UIImage) {
-        capturedImage = nil
+        guard !isAnalyzingAI else { return }
         guard subscriptionManager.canUseAIFeatures else {
             showPaywall = true
             return
         }
-        guard let jpegData = image.jpegData(compressionQuality: 0.82) else { return }
+        // Clear the shot only once it is actually being analysed, so visiting the paywall
+        // first doesn't cost the user the photo they just took.
+        capturedImage = nil
+        guard let jpegData = downscaledJPEGData(from: image) else { return }
 
         withAnimation(.snappy(duration: 0.25)) {
             analyzingType = .photo
@@ -873,12 +890,15 @@ struct AIView: View {
                         isAnalyzingAI = false
                     }
                     UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                    showToast(speechService.selectedLanguage == .arabic ? "لم يتم التعرف على طعام في الصورة." : "No food detected in photo.")
+                    let emptyResultMessage = analysis.engine == .onDeviceFallback
+                        ? unreachableAIMessage
+                        : localized("لم يتم التعرف على طعام في الصورة.", "No food detected in photo.")
+                    showToast(emptyResultMessage)
                 }
                 return
             }
 
-            let finalLocation = await resolveMealLocation(from: analysis.location)
+            let finalLocation = provisionalLocation(from: analysis.location)
 
             await MainActor.run {
                 let todayLog = DailyLog.fetchOrCreateToday(context: modelContext)
@@ -914,11 +934,13 @@ struct AIView: View {
                 aiEntry.dailyLog = todayLog
                 modelContext.insert(aiEntry)
 
-                subscriptionManager.consumeFreeScanIfFreeUser()
-                try? modelContext.save()
+                let saved = persistContext()
+                if saved { subscriptionManager.consumeFreeScanIfFreeUser() }
                 withAnimation(.snappy(duration: 0.35)) {
                     isAnalyzingAI = false
                 }
+                guard saved else { return }
+                patchLocation(of: aiEntry, from: analysis.location)
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 if subscriptionManager.isPro {
                     showToast("Logged \(analysis.title) · \(analysis.calories) kcal")
@@ -932,84 +954,81 @@ struct AIView: View {
         }
     }
 
-    private func saveNutritionResult(
-        parsed: ParsedNutritionResult,
-        originalText: String,
-        audioRelativePath: String?,
-        waveformSamples: [Float],
-        photos: [Data]
+    /// Persists the context and reports whether the write actually landed.
+    /// Every logging path used `try? save()`, so a failed write still showed a success toast.
+    @discardableResult
+    private func persistContext() -> Bool {
+        do {
+            try modelContext.save()
+        } catch {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            showToast(speechService.selectedLanguage == .arabic
+                ? "تعذر حفظ السجل. برجاء المحاولة مرة أخرى."
+                : "Couldn't save your log. Please try again.")
+            return false
+        }
+
+        // Every AI log lands in today's log, so mirroring that day into Health here covers all
+        // five logging paths, and later edits or deletes, without per-site bookkeeping.
+        Task { await HealthSyncService.shared.syncDay(DailyLog.fetchOrCreateToday(context: modelContext)) }
+        return true
+    }
+
+    /// Hydration is parsed on-device: exact numbers, no cloud round trip, and it never
+    /// spends a free AI scan.
+    private func logLocalHydration(
+        amountML: Int,
+        summary: String,
+        story: String,
+        voiceRelativePath: String? = nil,
+        waveformSamples: [Float] = [],
+        duration: TimeInterval = 0
     ) {
         let todayLog = DailyLog.fetchOrCreateToday(context: modelContext)
         let aiEntryId = UUID()
 
-        if parsed.isWater {
-            let water = WaterEntry(
-                amount: parsed.waterML,
-                timestamp: .now,
-                label: "AI Voice Log",
-                aiMealEntryId: aiEntryId
-            )
-            todayLog.waterEntries.append(water)
-
-            let aiEntry = AIMealEntry(
-                id: aiEntryId,
-                title: "Hydration (\(parsed.waterML) ml)",
-                location: "Logged with Soma AI",
-                storyText: originalText,
-                calories: 0,
-                proteinG: 0,
-                carbsG: 0,
-                fatG: 0,
-                photoDataList: photos,
-                voiceAudioRelativePath: audioRelativePath,
-                voiceWaveformSamples: waveformSamples,
-                voiceDurationSeconds: audioRelativePath != nil ? Double(waveformSamples.count) * 0.06 : 0.0,
-                breakdownNotes: parsed.summary
-            )
-            aiEntry.dailyLog = todayLog
-            modelContext.insert(aiEntry)
-
-            try? modelContext.save()
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-            showToast("Logged \(parsed.waterML) ml of water")
-            return
-        }
-
-        // 1. Food Entry in Daily Tracker
-        let foodEntry = FoodEntry(
-            name: parsed.title,
-            calories: parsed.calories,
-            proteinG: parsed.proteinG,
-            carbsG: parsed.carbsG,
-            fatG: parsed.fatG,
-            mealType: "AI Log",
-            timestamp: .now,
-            aiMealEntryId: aiEntryId
+        todayLog.waterEntries.append(
+            WaterEntry(amount: amountML, timestamp: .now, label: "Soma AI", aiMealEntryId: aiEntryId)
         )
-        todayLog.foodEntries.append(foodEntry)
 
-        // 2. AI Meal Entry for the Editorial Screen
         let aiEntry = AIMealEntry(
             id: aiEntryId,
-            title: parsed.title,
-            location: "Logged with Soma AI",
-            storyText: originalText,
-            calories: parsed.calories,
-            proteinG: parsed.proteinG,
-            carbsG: parsed.carbsG,
-            fatG: parsed.fatG,
-            photoDataList: photos,
-            voiceAudioRelativePath: audioRelativePath,
+            title: "Hydration (\(amountML) ml)",
+            location: "",
+            storyText: story,
+            calories: 0,
+            proteinG: 0,
+            carbsG: 0,
+            fatG: 0,
+            photoDataList: [],
+            voiceAudioRelativePath: voiceRelativePath,
             voiceWaveformSamples: waveformSamples,
-            voiceDurationSeconds: audioRelativePath != nil ? Double(waveformSamples.count) * 0.06 : 0.0,
-            breakdownNotes: parsed.summary
+            voiceDurationSeconds: duration,
+            breakdownNotes: summary
         )
         aiEntry.dailyLog = todayLog
         modelContext.insert(aiEntry)
 
-        try? modelContext.save()
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-        showToast(parsed.summary)
+        if persistContext() {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            showToast(summary)
+        }
+    }
+
+    /// Gemini does not need a 12 MP plate. Shrinking to 1024 px keeps the base64 payload
+    /// (built on the main actor) roughly ten times smaller.
+    private func downscaledJPEGData(from image: UIImage, maxDimension: CGFloat = 1_024, quality: CGFloat = 0.82) -> Data? {
+        let longestSide = max(image.size.width, image.size.height)
+        guard longestSide > maxDimension else {
+            return image.jpegData(compressionQuality: quality)
+        }
+
+        let scale = maxDimension / longestSide
+        let targetSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let resized = UIGraphicsImageRenderer(size: targetSize).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+        return resized.jpegData(compressionQuality: quality)
     }
 
     private func showToast(_ message: String) {

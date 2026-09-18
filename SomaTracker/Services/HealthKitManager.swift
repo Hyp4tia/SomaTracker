@@ -25,8 +25,10 @@ final class HealthKitManager {
     func requestAuthorization() async {
         guard HKHealthStore.isHealthDataAvailable() else { return }
         let stepType = HKQuantityType(.stepCount)
+        // Share list comes from HealthSyncService so the read and write sets cannot drift.
+        let shareTypes = Set(HealthSyncService.shareTypeIdentifiers.map { HKQuantityType($0) as HKSampleType })
         do {
-            try await healthStore.requestAuthorization(toShare: [], read: [stepType])
+            try await healthStore.requestAuthorization(toShare: shareTypes, read: [stepType])
             isAuthorized = true
         } catch {
             print("[HealthKit] Authorization failed: \(error.localizedDescription)")

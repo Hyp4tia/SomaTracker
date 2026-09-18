@@ -31,13 +31,23 @@ enum ExportDateRange: String, CaseIterable, Identifiable {
 }
 
 struct DataExporter {
+    /// Fixed Gregorian + POSIX: a CSV is a data file, so its dates must not follow the
+    /// user's calendar or locale conventions (Islamic/Buddhist calendars would break it).
+    private static let csvDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
     static func generateCSV(logs: [DailyLog]) -> String {
         var csv = "Date,Steps,Total Calories (kcal),Total Protein (g),Total Water (ml),Detailed Items Logged\n"
 
         let sortedLogs = logs.sorted { $0.date > $1.date }
 
         for log in sortedLogs {
-            let dateStr = log.date.formatted(.dateTime.year().month(.twoDigits).day(.twoDigits))
+            let dateStr = csvDateFormatter.string(from: log.date)
             let steps = "\(log.steps)"
             let calories = "\(log.totalCalories)"
             let protein = "\(Int(log.totalProtein.rounded()))"
@@ -95,9 +105,7 @@ struct DataExporter {
 
     private static func createExportFileURL(logs: [DailyLog]) -> URL? {
         let csvContent = generateCSV(logs: logs)
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        let dateString = dateFormatter.string(from: .now)
+        let dateString = csvDateFormatter.string(from: .now)
 
         let filename = "Soma_History_Export_\(dateString).csv"
         let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)

@@ -11,10 +11,6 @@ struct MediaCarouselView: View {
     let photos: [Data]
     @State private var currentIndex: Int = 0
 
-    private var effectiveCount: Int {
-        max(1, photos.count)
-    }
-
     var body: some View {
         VStack(spacing: 12) {
             if photos.count > 1 {

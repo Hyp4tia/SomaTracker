@@ -8,10 +8,10 @@ enum LogCategory: String, CaseIterable, Identifiable {
 
     var id: Self { self }
 
-    var unit: String {
+    func unit(for system: UnitSystem) -> String {
         switch self {
         case .calories: "kcal"
-        case .water: "ml"
+        case .water: Units.waterUnit(system)
         case .protein: "g"
         }
     }
@@ -44,7 +44,10 @@ struct LogSheetView: View {
     @State private var descriptionText = ""
     @State private var subscriptionManager = SubscriptionManager.shared
     @State private var showPaywall = false
+    @AppStorage(Units.storageKey) private var unitSystemRaw = UnitSystem.metric.rawValue
     @FocusState private var isDescriptionFocused: Bool
+
+    private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
 
     private var numericValue: Int {
         Int(displayValue) ?? 0
@@ -186,7 +189,7 @@ struct LogSheetView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
 
-                Text(selectedCategory.unit)
+                Text(selectedCategory.unit(for: unitSystem))
                     .font(.title3.weight(.medium))
                     .foregroundStyle(Color(.secondaryLabel))
             }
@@ -307,7 +310,7 @@ struct LogSheetView: View {
 
         case .water:
             let entry = WaterEntry(
-                amount: numericValue,
+                amount: Units.waterToML(numericValue, system: unitSystem),
                 timestamp: .now,
                 label: label.isEmpty ? nil : label
             )
@@ -327,7 +330,13 @@ struct LogSheetView: View {
             log.foodEntries.append(entry)
         }
 
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+        Task { await HealthSyncService.shared.syncDay(log) }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         dismiss()
     }

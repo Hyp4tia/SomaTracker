@@ -68,6 +68,18 @@ struct AIFoodItemBreakdown: Codable, Identifiable {
 }
 
 struct AIMealAnalysisResult: Codable {
+    /// Which engine produced this analysis. Not part of the wire format: it is set locally so the
+    /// UI can tell "Soma AI could not be reached" apart from "the AI found no food here".
+    enum Engine {
+        case cloud
+        /// Cloud is configured but the call failed, so this is the on-device fallback.
+        case onDeviceFallback
+        /// Cloud is not configured at all, so the on-device engine handled it.
+        case onDevice
+    }
+
+    var engine: Engine = .cloud
+
     let title: String
     let location: String
     let storyNarrative: String
@@ -87,6 +99,13 @@ struct AIMealAnalysisResult: Codable {
             return true
         }
         return false
+    }
+
+    /// Same result, attributed to a different engine.
+    func attributed(to engine: Engine) -> AIMealAnalysisResult {
+        var copy = self
+        copy.engine = engine
+        return copy
     }
 
     static let noFoodDetected = AIMealAnalysisResult(
@@ -115,7 +134,8 @@ struct AIMealAnalysisResult: Codable {
         carbsG: Double,
         fatG: Double,
         confidence: Double,
-        items: [AIFoodItemBreakdown]
+        items: [AIFoodItemBreakdown],
+        engine: Engine = .cloud
     ) {
         self.title = title
         self.location = location
@@ -126,6 +146,7 @@ struct AIMealAnalysisResult: Codable {
         self.fatG = fatG
         self.confidence = confidence
         self.items = items
+        self.engine = engine
     }
 
     init(from decoder: Decoder) throws {

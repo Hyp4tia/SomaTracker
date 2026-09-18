@@ -36,15 +36,14 @@ struct LogWaterAppIntent: AppIntent {
             )
         }
 
-        let schema = Schema([UserProfile.self, DailyLog.self, FoodEntry.self, WaterEntry.self, AIMealEntry.self])
-        guard let container = try? ModelContainer(for: schema) else {
-            return .result(value: "Failed", dialog: "Could not open Soma database.")
-        }
-        let context = container.mainContext
+        // Shared container: intents run inside the app process, so a second container
+        // over the same store would be a needless second writer on one SQLite file.
+        let context = SomaPersistence.shared.mainContext
         let todayLog = DailyLog.fetchOrCreateToday(context: context)
         let aiEntryId = UUID()
 
-        let targetML = max(1, amount)
+        // Siri takes free text, so keep the amount inside a physically plausible bottle.
+        let targetML = min(max(1, amount), 2_000)
         let entry = WaterEntry(amount: targetML, timestamp: .now, label: "Soma AI", aiMealEntryId: aiEntryId)
         todayLog.waterEntries.append(entry)
 
@@ -63,7 +62,16 @@ struct LogWaterAppIntent: AppIntent {
         context.insert(aiEntry)
 
         SubscriptionManager.shared.consumeFreeScanIfFreeUser()
-        try? context.save()
+
+        do {
+            try context.save()
+        } catch {
+            return .result(
+                value: "Not Logged",
+                dialog: "Soma couldn't save that. Please try again."
+            )
+        }
+        await HealthSyncService.shared.syncDay(todayLog)
 
         return .result(
             value: "Logged \(targetML) ml",
@@ -98,11 +106,9 @@ struct LogMealAppIntent: AppIntent {
             )
         }
 
-        let schema = Schema([UserProfile.self, DailyLog.self, FoodEntry.self, WaterEntry.self, AIMealEntry.self])
-        guard let container = try? ModelContainer(for: schema) else {
-            return .result(value: "Failed", dialog: "Could not open Soma database.")
-        }
-        let context = container.mainContext
+        // Shared container: intents run inside the app process, so a second container
+        // over the same store would be a needless second writer on one SQLite file.
+        let context = SomaPersistence.shared.mainContext
         let todayLog = DailyLog.fetchOrCreateToday(context: context)
         let aiEntryId = UUID()
 
@@ -127,14 +133,24 @@ struct LogMealAppIntent: AppIntent {
             context.insert(aiEntry)
 
             SubscriptionManager.shared.consumeFreeScanIfFreeUser()
-            try? context.save()
+
+            do {
+                try context.save()
+            } catch {
+                return .result(
+                    value: "Not Logged",
+                    dialog: "Soma couldn't save that. Please try again."
+                )
+            }
+            await HealthSyncService.shared.syncDay(todayLog)
+
             return .result(
                 value: "Logged \(waterCheck.waterML) ml",
                 dialog: "Added \(waterCheck.waterML) ml of water to your daily hydration in Soma."
             )
         }
 
-        // 2. Parse meal using AIRouter (routes through Gemini 2.0 Flash if API key is active, or local engine)
+        // 2. Parse meal using AIRouter (Gemini Flash through the proxy when online, on-device engine otherwise)
         let analysis = await AIRouter.shared.processMultimodalMeal(
             notes: item,
             photos: [],
@@ -170,7 +186,16 @@ struct LogMealAppIntent: AppIntent {
         context.insert(aiEntry)
 
         SubscriptionManager.shared.consumeFreeScanIfFreeUser()
-        try? context.save()
+
+        do {
+            try context.save()
+        } catch {
+            return .result(
+                value: "Not Logged",
+                dialog: "Soma couldn't save that. Please try again."
+            )
+        }
+        await HealthSyncService.shared.syncDay(todayLog)
 
         return .result(
             value: "Logged \(analysis.title)",

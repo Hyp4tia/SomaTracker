@@ -5,6 +5,7 @@ struct WaterLogSheetView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Query private var logs: [DailyLog]
+    @Query private var profiles: [UserProfile]
 
     @AppStorage(Units.storageKey) private var unitSystemRaw = UnitSystem.metric.rawValue
     private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
@@ -17,28 +18,34 @@ struct WaterLogSheetView: View {
     private var waterUnit: String { Units.waterUnit(unitSystem) }
     private func display(_ ml: Int) -> Int { Units.waterValue(ml: ml, system: unitSystem) }
 
-    private var profileWaterGoal: Int {
-        // Read the goal off the same query the rest of the app uses.
-        (try? modelContext.fetch(FetchDescriptor<UserProfile>()))?.first?.dailyWaterGoalML ?? 2_000
+    private var profileWaterGoal: Int { profiles.first?.dailyWaterGoalML ?? 2_000 }
+
+    /// Sums every log for the day: duplicate DailyLogs for one date would otherwise hide
+    /// entries behind whichever row the fetch happened to return first.
+    private func waterTotal(on day: Date) -> Int {
+        let calendar = Calendar.current
+        return logs
+            .filter { calendar.isDate($0.date, inSameDayAs: day) }
+            .reduce(0) { $0 + $1.totalWater }
     }
 
-    private var todayWater: Int {
-        let today = Calendar.current.startOfDay(for: .now)
-        return logs.first { Calendar.current.isDate($0.date, inSameDayAs: today) }?.totalWater ?? 0
-    }
+    private var todayWater: Int { waterTotal(on: .now) }
 
     private var yesterdayWater: Int {
         let calendar = Calendar.current
         guard let yesterday = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: .now)) else {
             return 0
         }
-        return logs.first { calendar.isDate($0.date, inSameDayAs: yesterday) }?.totalWater ?? 0
+        return waterTotal(on: yesterday)
     }
 
     private var todayEntries: [WaterEntry] {
-        let today = Calendar.current.startOfDay(for: .now)
-        let log = logs.first { Calendar.current.isDate($0.date, inSameDayAs: today) }
-        return (log?.waterEntries ?? []).sorted { $0.timestamp > $1.timestamp }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: .now)
+        return logs
+            .filter { calendar.isDate($0.date, inSameDayAs: today) }
+            .flatMap(\.waterEntries)
+            .sorted { $0.timestamp > $1.timestamp }
     }
 
     private var projectedTotal: Int {
@@ -300,7 +307,13 @@ struct WaterLogSheetView: View {
         let log = DailyLog.fetchOrCreateToday(context: modelContext)
         let entry = WaterEntry(amount: pendingAmount)
         log.waterEntries.append(entry)
-        try? modelContext.save()
+        // Keep the sheet open if the write fails so the amount isn't silently lost.
+        do {
+            try modelContext.save()
+        } catch {
+            return
+        }
+        Task { await HealthSyncService.shared.syncDay(log) }
         dismiss()
     }
 }
@@ -449,7 +462,12 @@ struct CustomWaterEntryView: View {
         let log = DailyLog.fetchOrCreateToday(context: modelContext)
         let ml = Units.waterToML(numericValue, system: unitSystem)
         log.waterEntries.append(WaterEntry(amount: ml))
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            return  // stay on the calculator so the amount isn't lost
+        }
+        Task { await HealthSyncService.shared.syncDay(log) }
 
         dismiss()      // close this calculator
         onAdded()      // close the parent water sheet → back to home

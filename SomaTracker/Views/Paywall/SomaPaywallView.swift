@@ -3,7 +3,7 @@
 //  SomaTracker
 //
 //  Luxury minimal paywall compliant with Apple Guideline 3.1.2 & 4.2.
-//  Offers Weekly, Monthly, and Annual (3-Day Free Trial) plans.
+//  Offers Weekly, Monthly, and Annual plans.
 //
 
 import SwiftUI
@@ -15,6 +15,8 @@ struct SomaPaywallView: View {
     @State private var selectedPlan: SubscriptionPlan = .yearly
     @State private var showRestoreSuccessAlert = false
     @State private var showRestoreFailureAlert = false
+    @State private var purchaseErrorMessage: String? = nil
+    @State private var storefrontCountry: String = "USA"
 
     // MARK: - Dev Redeem Code (Temporary for Testing - Easy to Remove)
     @State private var showRedeemCodeAlert = false
@@ -40,27 +42,66 @@ struct SomaPaywallView: View {
             }
         }
 
-        var priceDescription: String {
-            switch self {
-            case .yearly: return "$29.99 / yr"
-            case .monthly: return "$4.99 / mo"
-            case .weekly: return "$1.99 / wk"
-            }
-        }
-
         var subDescription: String {
             switch self {
-            case .yearly: return "$2.50 / mo · Billed annually"
+            case .yearly: return "Billed annually"
             case .monthly: return "Flexible monthly billing"
             case .weekly: return "Billed weekly"
             }
         }
 
-        var badgeText: String? {
+        var periodSuffix: String {
             switch self {
-            case .yearly: return "SAVE 70%"
-            case .monthly: return nil
-            case .weekly: return nil
+            case .yearly: return "yr"
+            case .monthly: return "mo"
+            case .weekly: return "wk"
+            }
+        }
+    }
+
+    /// Price copy shown before StoreKit answers, or when the App Store Connect products are not
+    /// live yet. Keyed by storefront so an Egyptian user is never quoted a USD number.
+    /// Keep these in sync with the App Store Connect prices; StoreKit always wins once loaded.
+    private enum PriceFallback {
+        struct Tier {
+            let label: String
+            let weekly: Double
+            let monthly: Double
+            let yearly: Double
+
+            /// Fixed two-decimal Latin digits: a fallback must not depend on locale formatting.
+            func format(_ value: Double) -> String {
+                let amount = String(format: "%.2f", value)
+                return label.count == 1 ? "\(label)\(amount)" : "\(label) \(amount)"
+            }
+
+            func price(for plan: SubscriptionPlan) -> String {
+                switch plan {
+                case .weekly: return format(weekly)
+                case .monthly: return format(monthly)
+                case .yearly: return format(yearly)
+                }
+            }
+        }
+
+        static let egypt = Tier(label: "EGP", weekly: 29.99, monthly: 69.99, yearly: 599.99)
+        static let uae = Tier(label: "AED", weekly: 12.99, monthly: 19.99, yearly: 149.99)
+        static let saudi = Tier(label: "SAR", weekly: 12.99, monthly: 19.99, yearly: 149.99)
+        static let unitedStates = Tier(label: "$", weekly: 2.99, monthly: 7.99, yearly: 39.99)
+        static let eurozone = Tier(label: "€", weekly: 3.49, monthly: 8.99, yearly: 44.99)
+
+        private static let eurozoneCountries: Set<String> = [
+            "AUT", "BEL", "HRV", "CYP", "EST", "FIN", "FRA", "DEU", "GRC", "IRL", "ITA",
+            "LVA", "LTU", "LUX", "MLT", "NLD", "PRT", "SVK", "SVN", "ESP"
+        ]
+
+        static func tier(for countryCode: String) -> Tier {
+            switch countryCode {
+            case "EGY": return egypt
+            case "ARE": return uae
+            case "SAU": return saudi
+            case "USA": return unitedStates
+            default: return eurozoneCountries.contains(countryCode) ? eurozone : unitedStates
             }
         }
     }
@@ -261,7 +302,11 @@ struct SomaPaywallView: View {
                         }
                         .padding(.bottom, 32)
                     }
+                    // Pin the content column to the viewport width. Without this one over-wide
+                    // row turns the whole sheet into a sideways-pannable surface.
+                    .containerRelativeFrame(.horizontal)
                 }
+                .clipped()
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -277,7 +322,17 @@ struct SomaPaywallView: View {
                     .accessibilityLabel("Close")
                 }
             }
-            .alert("Purchases Restored", isPresented: $showRestoreSuccessAlert) {
+            .task {
+                // Fallback price copy needs a storefront. StoreKit products always win when they
+                // load; the device region is the backstop for the degraded offline case.
+                storefrontCountry = await Storefront.current?.countryCode
+                    ?? Locale.current.region?.identifier
+                    ?? "USA"
+                #if DEBUG
+                print("[Paywall] storefront=\(storefrontCountry) loadedProducts=\(subscriptionManager.availableProducts.count)")
+                #endif
+            }
+            .alert("Restore Complete", isPresented: $showRestoreSuccessAlert) {
                 Button("OK") {
                     if subscriptionManager.isPro {
                         dismiss()
@@ -290,6 +345,14 @@ struct SomaPaywallView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(subscriptionManager.lastErrorMessage ?? "Unable to restore purchases at this time.")
+            }
+            .alert("Purchase Unavailable", isPresented: .init(
+                get: { purchaseErrorMessage != nil },
+                set: { if !$0 { purchaseErrorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { purchaseErrorMessage = nil }
+            } message: {
+                Text(purchaseErrorMessage ?? "")
             }
             // MARK: - Dev Redeem Code Alerts (Temporary for Testing - Easy to Remove)
             .alert("Redeem Code", isPresented: $showRedeemCodeAlert) {
@@ -375,7 +438,7 @@ struct SomaPaywallView: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.85)
 
-                        if let badge = plan.badgeText {
+                        if let badge = planBadge(for: plan) {
                             Text(badge)
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundColor(.white)
@@ -389,20 +452,22 @@ struct SomaPaywallView: View {
                         }
                     }
 
-                    Text(plan.subDescription)
+                    Text(planSubtitle(for: plan))
                         .font(.system(size: 12, weight: .regular))
                         .foregroundColor(SomaColors.subtext)
-                        .lineLimit(1)
+                        // Wraps rather than truncating: a longer price string in another currency
+                        // must never end in an ellipsis.
+                        .lineLimit(2)
                         .minimumScaleFactor(0.85)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .layoutPriority(1)
-
-                Spacer(minLength: 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text(planPriceDisplay(for: plan))
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundColor(SomaColors.navy)
                     .lineLimit(1)
+                    .layoutPriority(1)
             }
             .padding(16)
             .background(
@@ -417,15 +482,45 @@ struct SomaPaywallView: View {
         .buttonStyle(.plain)
     }
 
+    private var fallbackTier: PriceFallback.Tier { PriceFallback.tier(for: storefrontCountry) }
+
     private func planPriceDisplay(for plan: SubscriptionPlan) -> String {
-        if let product = subscriptionManager.availableProducts.first(where: { $0.id == plan.rawValue }) {
-            switch plan {
-            case .yearly: return "\(product.displayPrice) / yr"
-            case .monthly: return "\(product.displayPrice) / mo"
-            case .weekly: return "\(product.displayPrice) / wk"
-            }
+        let price = subscriptionManager.availableProducts.first(where: { $0.id == plan.rawValue })?.displayPrice
+            ?? fallbackTier.price(for: plan)
+        return "\(price) / \(plan.periodSuffix)"
+    }
+
+    private func planSubtitle(for plan: SubscriptionPlan) -> String {
+        guard plan == .yearly else { return plan.subDescription }
+
+        // The monthly equivalent on one line and the billing cadence on the next, broken
+        // deliberately: as a single line this ran into the price column and ellipsized, and the
+        // cadence has to stay on screen in words for the subscription disclosure to be clear.
+        let perMonth = subscriptionManager.availableProducts
+            .first { $0.id == plan.rawValue }
+            .map { ($0.price / 12).formatted($0.priceFormatStyle) }
+            ?? fallbackTier.format(fallbackTier.yearly / 12)
+
+        return "\(perMonth) / mo\nBilled annually"
+    }
+
+    /// Percentage saved against paying weekly, computed from real prices. Falls back to a claim
+    /// that holds in every storefront while the products are still loading.
+    private func planBadge(for plan: SubscriptionPlan) -> String? {
+        guard plan == .yearly else { return nil }
+
+        let products = subscriptionManager.availableProducts
+        guard let weekly = products.first(where: { $0.id == SubscriptionPlan.weekly.rawValue }),
+              let yearly = products.first(where: { $0.id == plan.rawValue }) else {
+            return "BEST VALUE"
         }
-        return plan.priceDescription
+
+        let weeklyOverYear = NSDecimalNumber(decimal: weekly.price).doubleValue * 52
+        let yearlyPrice = NSDecimalNumber(decimal: yearly.price).doubleValue
+        guard weeklyOverYear > yearlyPrice else { return "BEST VALUE" }
+
+        let saving = ((weeklyOverYear - yearlyPrice) / weeklyOverYear * 100).rounded()
+        return "SAVE \(Int(saving))%"
     }
 
     // MARK: - Active Subscription Card
@@ -568,27 +663,26 @@ struct SomaPaywallView: View {
     private func handlePurchaseTapped() {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-        // Find matched StoreKit product if loaded
-        if let product = subscriptionManager.availableProducts.first(where: { $0.id == selectedPlan.rawValue }) {
-            Task {
-                let success = await subscriptionManager.purchase(product)
-                if success {
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    dismiss()
-                }
-            }
-        } else {
-            // Local fallback simulation if running in preview / before storekit loading
-            Task {
-                // In local testing, if StoreKit products are loading, attempt refresh
+        Task {
+            // Products load asynchronously; give the store one more chance before giving up
+            // instead of leaving the Continue button silently doing nothing.
+            if subscriptionManager.availableProducts.isEmpty {
                 await subscriptionManager.refreshProducts()
-                if let product = subscriptionManager.availableProducts.first(where: { $0.id == selectedPlan.rawValue }) {
-                    let success = await subscriptionManager.purchase(product)
-                    if success {
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                        dismiss()
-                    }
-                }
+            }
+
+            guard let product = subscriptionManager.availableProducts.first(where: { $0.id == selectedPlan.rawValue }) else {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                purchaseErrorMessage = "Plans are still loading. Please check your connection and try again."
+                return
+            }
+
+            let success = await subscriptionManager.purchase(product)
+            if success {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                dismiss()
+            } else if let message = subscriptionManager.lastErrorMessage {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                purchaseErrorMessage = message
             }
         }
     }

@@ -21,6 +21,7 @@ struct SettingsView: View {
     @State private var showPaywall = false
     @State private var showRestoreSuccessAlert = false
     @State private var showRestoreFailAlert = false
+    @State private var dataResetError: String? = nil
 
     private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
     private var profile: UserProfile? { profiles.first }
@@ -228,6 +229,33 @@ struct SettingsView: View {
                     .padding(.vertical, 3)
                 }
                 .disabled(subscriptionManager.isRestoring)
+
+                if subscriptionManager.isPro {
+                    Button {
+                        Task { await subscriptionManager.manageSubscriptions() }
+                    } label: {
+                        HStack(spacing: 14) {
+                            rowIcon(icon: "creditcard.fill", color: Color(hex: "007AFF"), isCircularBadge: false)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Manage Subscription")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(Color(.label))
+
+                                Text("Change or cancel your Soma Pro plan")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Color(.secondaryLabel))
+                            }
+
+                            Spacer()
+
+                            Image(systemName: "arrow.up.right")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color(.tertiaryLabel))
+                        }
+                        .padding(.vertical, 3)
+                    }
+                }
             } header: {
                 Text("SUBSCRIPTION")
             } footer: {
@@ -276,7 +304,7 @@ struct SettingsView: View {
 
                     Spacer()
 
-                    Toggle("", isOn: $notificationManager.isEnabled)
+                    Toggle("Daily reminder", isOn: $notificationManager.isEnabled)
                         .labelsHidden()
                         .tint(Color.green)
                 }
@@ -300,7 +328,7 @@ struct SettingsView: View {
                         Spacer()
 
                         DatePicker(
-                            "",
+                            "Reminder time",
                             selection: $notificationManager.dailyReminderTime,
                             displayedComponents: .hourAndMinute
                         )
@@ -326,7 +354,7 @@ struct SettingsView: View {
                         Spacer()
 
                         DatePicker(
-                            "",
+                            "Evening wrap-up time",
                             selection: $notificationManager.eveningReminderTime,
                             displayedComponents: .hourAndMinute
                         )
@@ -551,6 +579,24 @@ struct SettingsView: View {
         } message: {
             Text(subscriptionManager.lastErrorMessage ?? "No active subscription was found to restore.")
         }
+        .alert("Notifications Are Off", isPresented: $notificationManager.permissionDenied) {
+            Button("Open Settings") {
+                if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(settingsURL)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Soma can't send reminders while notifications are turned off for the app. Enable them in iPhone Settings to use daily reminders.")
+        }
+        .alert("Couldn't Reset Data", isPresented: .init(
+            get: { dataResetError != nil },
+            set: { if !$0 { dataResetError = nil } }
+        )) {
+            Button("OK", role: .cancel) { dataResetError = nil }
+        } message: {
+            Text(dataResetError ?? "")
+        }
     }
 
     // MARK: - Row Helpers
@@ -629,20 +675,6 @@ struct SettingsView: View {
         }
     }
 
-    private var profileInitials: String {
-        guard let name = profile?.name.trimmingCharacters(in: .whitespacesAndNewlines),
-              !name.isEmpty else {
-            return "S"
-        }
-        let initials = name
-            .split(separator: " ")
-            .prefix(2)
-            .compactMap(\.first)
-            .map(String.init)
-            .joined()
-        return initials.isEmpty ? "S" : initials.uppercased()
-    }
-
     private func saveGoal() {
         guard let goal = editingGoal,
               let value = Int(goalDraftValue),
@@ -704,7 +736,14 @@ struct SettingsView: View {
         try? modelContext.delete(model: AIMealEntry.self)
         try? modelContext.delete(model: UserProfile.self)
 
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            // Do not send the user into onboarding on top of data that never got deleted:
+            // the old profile would survive and a second one would be created.
+            dataResetError = "Your data couldn't be cleared. Please try again."
+            return
+        }
         modelContext.processPendingChanges()
 
         // 3. Remove all saved voice memo audio recordings from device storage (.wav, .m4a)
@@ -719,11 +758,15 @@ struct SettingsView: View {
             }
         }
 
-        // 4. Cancel all pending and delivered local notification requests
-        UNUserNotificationCenter.current().removeAllPendingNotificationRequests()
+        // 4. Turn reminders off (the manager cancels the pending requests with it) and clear
+        // anything already delivered, so the toggle can't show ON with nothing scheduled.
+        notificationManager.isEnabled = false
         UNUserNotificationCenter.current().removeAllDeliveredNotifications()
 
-        // 5. Reset navigation to Home and return to Onboarding (Preserving subscription / free scans)
+        // 5. Clear Soma's own entries from Apple Health. Samples from other apps are untouched.
+        Task { await HealthSyncService.shared.removeAllSamples() }
+
+        // 6. Reset navigation to Home and return to Onboarding (Preserving subscription / free scans)
         tabRouter.selectedTab = .home
         appRouter.hasCompletedOnboarding = false
     }

@@ -18,6 +18,10 @@ final class NotificationManager: ObservableObject {
     private let dailyReminderID = "soma.dailyReminder"
     private let endOfDayReminderID = "soma.endOfDayReminder"
 
+    /// Set when the user has notification permission turned off in system settings, so the
+    /// UI can offer a route to Settings instead of silently snapping the toggle back.
+    @Published var permissionDenied = false
+
     @Published var isEnabled: Bool {
         didSet {
             UserDefaults.standard.set(isEnabled, forKey: storageKey)
@@ -85,6 +89,40 @@ final class NotificationManager: ObservableObject {
         }
     }
 
+    /// Re-reads the system permission so the toggle cannot lie. iOS Settings can revoke
+    /// notifications without the app being told, which used to leave a green switch promising
+    /// reminders that could never arrive. Only flags the alert when the toggle claimed to be on.
+    func refreshPermissionState() async {
+        let settings = await center.notificationSettings()
+
+        switch settings.authorizationStatus {
+        case .denied:
+            if isEnabled {
+                isEnabled = false // didSet clears the pending reminders
+                permissionDenied = true
+            }
+        case .authorized, .provisional, .ephemeral:
+            permissionDenied = false
+        case .notDetermined:
+            break
+        @unknown default:
+            break
+        }
+    }
+
+    /// Post-onboarding opt-in: asks for permission, then turns the toggle on so the saved
+    /// reminder times are scheduled. Returns whether reminders are actually live.
+    func enableRemindersFromPrompt() async -> Bool {
+        guard await requestPermission() else {
+            permissionDenied = true
+            return false
+        }
+
+        permissionDenied = false
+        if !isEnabled { isEnabled = true }
+        return true
+    }
+
     // MARK: - Scheduling
 
     /// Schedules the morning "Track your day" reminder at the given time.
@@ -149,11 +187,14 @@ final class NotificationManager: ObservableObject {
         let granted = await requestPermission()
 
         guard granted else {
-            // Permission denied — keep state consistent with the system setting.
+            // Permission denied — keep state consistent with the system setting and let the
+            // UI point the user at Settings instead of leaving a dead toggle behind.
+            permissionDenied = true
             isEnabled = false
             return
         }
 
+        permissionDenied = false
         let calendar = Calendar.current
         let dailyComps = calendar.dateComponents([.hour, .minute], from: dailyReminderTime)
         let eveningComps = calendar.dateComponents([.hour, .minute], from: eveningReminderTime)

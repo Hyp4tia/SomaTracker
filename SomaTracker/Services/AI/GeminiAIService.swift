@@ -34,14 +34,16 @@ final class GeminiAIService: AIServiceProtocol {
             throw NSError(domain: "GeminiAIService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Neither Gemini proxy endpoint nor API key is configured."])
         }
 
+        // Measured against the live proxy: full Flash models burn 500-900 thinking tokens and
+        // answer in 5-15s, or return 503 while Google sheds load, while Flash-Lite answers a
+        // photo or a text meal in about 1.5s and never thinks at all. Lite is also the only
+        // family that rejects thinkingConfig (HTTP 400), so this cascade stays Lite-only and
+        // deliberately sends none. Pinned name first for consistent speed, `-latest` second so a
+        // version bump cannot break logging, and nothing after that: each extra miss is a full
+        // round trip the user waits through before the on-device engine takes over.
         let candidateModels = [
-            "gemini-3.6-flash",
-            "gemini-3.7-flash",
-            "gemini-3.5-flash",
             "gemini-3.5-flash-lite",
-            "gemini-3.1-flash-lite",
             "gemini-flash-lite-latest",
-            "gemini-flash-latest"
         ]
 
         var parts: [[String: Any]] = []
@@ -161,14 +163,20 @@ final class GeminiAIService: AIServiceProtocol {
                 request.setValue(proxyClientSecret, forHTTPHeaderField: "X-Soma-Client-Key")
             }
             request.httpBody = requestData
-            request.timeoutInterval = 25
+            // Lite replies in about 1.5s, so a stalled attempt must not own the whole scan.
+            request.timeoutInterval = 12
 
             do {
                 let (data, response) = try await URLSession.shared.data(for: request)
 
                 guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
                     let errorText = String(data: data, encoding: .utf8) ?? "Unknown server response"
+                    #if DEBUG
                     print("[GeminiAIService] Model \(modelName) returned error: \(errorText)")
+                    #else
+                    // Status only in release: the body can echo prompt content back.
+                    print("[GeminiAIService] Model \(modelName) returned HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+                    #endif
                     lastError = NSError(domain: "GeminiAIService", code: (response as? HTTPURLResponse)?.statusCode ?? 500, userInfo: [NSLocalizedDescriptionKey: errorText])
                     continue
                 }

@@ -69,6 +69,10 @@ final class AIRouter {
             }
         }
 
+        // Reaching here after a configured cloud attempt means the call failed, so the result is a
+        // fallback and the UI is told, rather than blaming the user's input for an outage.
+        let fallbackEngine: AIMealAnalysisResult.Engine = config.hasCloudVisionReady ? .onDeviceFallback : .onDevice
+
         // Step 3: On-Device Intelligent Nutrition & NLP Engine
         let parsed = FoodNutritionDatabase.shared.parseInput(combinedText)
 
@@ -77,7 +81,7 @@ final class AIRouter {
             : "Logged with Soma AI Voice & Vision."
 
         if parsed.title == "No Food Detected" {
-            return .noFoodDetected
+            return .noFoodDetected.attributed(to: fallbackEngine)
         }
 
         return AIMealAnalysisResult(
@@ -98,7 +102,8 @@ final class AIRouter {
                     carbsG: parsed.carbsG,
                     fatG: parsed.fatG
                 )
-            ]
+            ],
+            engine: fallbackEngine
         )
     }
 }

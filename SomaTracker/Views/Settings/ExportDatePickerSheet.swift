@@ -172,7 +172,9 @@ struct ExportDatePickerSheet: View {
         .onAppear {
             if let oldestLog = logs.min(by: { $0.date < $1.date }) {
                 isApplyingPreset = true
-                startDate = oldestLog.date
+                // Clamp: a future-dated log (manual clock change, timezone travel) would make
+                // the `startDate...Date.now` range inverted and trip the DatePicker precondition.
+                startDate = min(oldestLog.date, .now)
                 selectedRange = .all
                 DispatchQueue.main.async {
                     isApplyingPreset = false

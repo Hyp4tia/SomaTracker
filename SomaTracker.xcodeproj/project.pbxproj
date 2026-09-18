@@ -14,9 +14,23 @@
 		6666B14D2FB7146100CEBD01 /* SomaTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SomaTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		AA0000010000000000000010 /* Exceptions for "SomaTracker" folder in "SomaTracker" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Config/Secrets.xcconfig.template,
+				Services/Subscription/SomaProducts.storekit,
+			);
+			target = 6666B14C2FB7146100CEBD01 /* SomaTracker */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		6666B14F2FB7146100CEBD01 /* SomaTracker */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				AA0000010000000000000010 /* Exceptions for "SomaTracker" folder in "SomaTracker" target */,
+			);
 			path = SomaTracker;
 			sourceTree = "<group>";
 		};
@@ -268,9 +282,11 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Soma;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Soma uses your camera to capture meal photos for AI nutrition tracking.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Soma reads your step count to display daily activity.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Soma saves the food, protein and water you log to Apple Health.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Soma detects your city and area to tag meal entries in your AI Journal.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Soma uses your microphone to record voice notes and analyze meals with AI.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Soma uses speech recognition to transcribe your voice notes into meal logs.";
@@ -312,9 +328,11 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Soma;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.healthcare-fitness";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Soma uses your camera to capture meal photos for AI nutrition tracking.";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "Soma reads your step count to display daily activity.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Soma saves the food, protein and water you log to Apple Health.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Soma detects your city and area to tag meal entries in your AI Journal.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Soma uses your microphone to record voice notes and analyze meals with AI.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Soma uses speech recognition to transcribe your voice notes into meal logs.";

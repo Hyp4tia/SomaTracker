@@ -326,6 +326,7 @@ struct AIMealDetailView: View {
 
     private func logToDailyTracker() {
         entry.syncToFoodEntry(in: modelContext)
+        Task { await HealthSyncService.shared.syncDay(entry.dailyLog) }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
 
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -341,7 +342,10 @@ struct AIMealDetailView: View {
 
     private func deleteEntry() {
         playbackService.stop()
+        let dayLog = entry.dailyLog
         entry.deleteWithSyncedEntries(in: modelContext)
+        // Health keeps its own copy, so a removal has to be mirrored too.
+        Task { await HealthSyncService.shared.syncDay(dayLog) }
         dismiss()
     }
 
@@ -430,7 +434,15 @@ struct AIMealDetailView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
                         entry.syncToFoodEntry(in: modelContext)
-                        try? modelContext.save()
+                        do {
+                            try modelContext.save()
+                            // Health holds its own copy, so mirror the edit once it is saved.
+                            Task { await HealthSyncService.shared.syncDay(entry.dailyLog) }
+                        } catch {
+                            // The edit stays in the context, so the next successful save carries
+                            // it; nothing is lost by closing the sheet.
+                            print("[AIMealDetailView] Edit save failed: \(error.localizedDescription)")
+                        }
                         showEditDetailsSheet = false
                     }
                     .font(.headline)

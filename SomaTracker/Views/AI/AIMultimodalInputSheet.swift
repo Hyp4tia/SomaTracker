@@ -28,6 +28,7 @@ struct AIMultimodalInputSheet: View {
     @State private var isAnalyzing: Bool = false
     @State private var errorMessage: String? = nil
     @State private var createdEntry: AIMealEntry? = nil
+    @State private var isDismissed = false
 
     var onEntryCreated: ((AIMealEntry) -> Void)? = nil
 
@@ -110,6 +111,18 @@ struct AIMultimodalInputSheet: View {
                 }
             }
         }
+        .onDisappear {
+            // Any in-flight analysis must not write into a screen the user has left.
+            isDismissed = true
+            // Dismissed without saving: the recording left on disk is orphaned.
+            guard createdEntry == nil else { return }
+            if speechService.isRecordingLive {
+                speechService.stopLiveTranscription()
+            }
+            if let url = recordedAudioURL {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
     }
 
     private var canAnalyze: Bool {
@@ -159,6 +172,11 @@ struct AIMultimodalInputSheet: View {
 
                                     Button {
                                         selectedPhotos.remove(at: idx)
+                                        // Keep the picker in sync, otherwise the next
+                                        // selection change re-imports the deleted photo.
+                                        if pickerItems.indices.contains(idx) {
+                                            pickerItems.remove(at: idx)
+                                        }
                                     } label: {
                                         Image(systemName: "xmark.circle.fill")
                                             .font(.system(size: 18))
@@ -263,9 +281,13 @@ struct AIMultimodalInputSheet: View {
                             Spacer()
 
                             Button("Delete") {
+                                if let url = recordedAudioURL {
+                                    try? FileManager.default.removeItem(at: url)
+                                }
                                 recordedAudioURL = nil
                                 recordedRelativePath = nil
                                 recordedWaveformSamples = []
+                                recordedDuration = 0
                             }
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.red)
@@ -349,6 +371,10 @@ struct AIMultimodalInputSheet: View {
     // MARK: - Analysis & Save
 
     private func analyzeAndSave() {
+        // A second tap can land before SwiftUI re-renders the disabled button, which used
+        // to log the meal twice and charge two AI credits.
+        guard !isAnalyzing else { return }
+
         if speechService.isRecordingLive {
             let result = speechService.stopLiveTranscription()
             self.recordedAudioURL = result.audioURL
@@ -386,6 +412,8 @@ struct AIMultimodalInputSheet: View {
             await MainActor.run {
                 isAnalyzing = false
 
+                guard !isDismissed else { return }
+
                 guard !result.isNoFood, result.title != "No Food Detected" else {
                     errorMessage = "No food detected. Please check your notes or photo."
                     return
@@ -405,10 +433,17 @@ struct AIMultimodalInputSheet: View {
                     voiceDurationSeconds: recordedDuration
                 )
 
-                SubscriptionManager.shared.consumeFreeScanIfFreeUser()
                 modelContext.insert(newEntry)
-                try? modelContext.save()
+                do {
+                    try modelContext.save()
+                } catch {
+                    modelContext.delete(newEntry)
+                    errorMessage = "Couldn't save this entry. Please try again."
+                    return
+                }
 
+                SubscriptionManager.shared.consumeFreeScanIfFreeUser()
+                createdEntry = newEntry
                 onEntryCreated?(newEntry)
                 dismiss()
             }

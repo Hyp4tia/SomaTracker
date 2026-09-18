@@ -6,6 +6,77 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [Unreleased] - 2026-09-18b (fake hydration logs, honest failures, paywall text)
+
+### Fixed
+- **Voice logs could turn into a fake "Hydration (250 ml)" entry.** Two causes: the water branch re-read the AI's own narrative for water words, and the on-device pre-check treated any sentence containing a water word as hydration, so a meal like "شربت مية مع الكشري" was swallowed into a default glass without the AI ever being called. The parser now only reports hydration when the sentence names no real food, the post-analysis branches are gone entirely, and "2 كوباية مية" is two cups (500 ml) instead of 2 ml. Verified with a 12-case harness compiled against the real parser.
+- **A failed AI call no longer looks like the food was missing.** The analysis result now carries which engine produced it, so when the cloud call fails and the on-device fallback finds nothing either, the user sees "Couldn't reach Soma AI. Please try again." instead of "No food or drink detected."
+- **The Annual plan subtitle was truncated** to "EGP 50.00 / mo · Billed annua...". It is now two deliberate lines, "EGP 50.00 / mo" over "Billed annually", so the monthly equivalent and the billing cadence both stay visible and neither can ellipsize. Subtitles wrap instead of truncating and the price column keeps its width.
+
+---
+
+## [Unreleased] - 2026-09-18 (speed, reminders, Apple Health)
+
+### Fixed
+- **AI scans were slow because of which models were tried first.** Measured against the live proxy: the two full Flash models returned HTTP 503 on 4 of 5 attempts (about 4.5s per miss while Google sheds load), and a Flash answer burned 500-900 thinking tokens for 5-15s. The cascade is now Flash-Lite only, which answers a meal photo or a text log in about 1.5s with no thinking tokens at all, and the per-attempt timeout dropped from 25s to 12s.
+- **Location no longer delays a log.** Reverse geocoding ran before the entry was written, adding a network round trip to every AI log. The entry now saves first and the resolved location is patched in behind it.
+- **A History edit could fail silently.** The edit sheet used `try? modelContext.save()` and dismissed as if the change had landed. A failure now keeps the sheet open with the edited values and explains what happened.
+- **Siri could report a log that never saved.** All three App Intents used `try? context.save()` and answered "Logged ..." regardless. They now answer "Soma couldn't save that. Please try again." when the write fails.
+- **The reminders toggle could lie.** Permission revoked in iOS Settings left the toggle ON with nothing scheduled. Permission is now re-checked on every activation.
+- **The AI entry editor's save was silent**; the edit stays in the context and a failure is logged rather than swallowed.
+
+### Added
+- **Reminders are now actually offered.** A one-time opt-in appears after onboarding, in Soma's own onboarding style, before iOS's system dialog can appear cold in the middle of a log.
+- **Apple Health write-back.** Calories, protein, carbs, fat and water appear in Health as they are logged, including Siri logs. Samples carry a Soma marker, so editing or deleting an entry replaces exactly its own data and Reset All Data clears only what Soma wrote. Added `NSHealthUpdateUsageDescription`.
+- **Manage Subscription** in Settings for active subscribers, opening Apple's own subscription sheet.
+
+### Changed
+- Gemini routing is Flash-Lite first: `gemini-3.5-flash-lite`, then the `gemini-flash-lite-latest` alias, then the on-device engine.
+- Health authorization now requests the dietary write types alongside the read-only step count.
+
+---
+
+## [Unreleased] - 2026-09-17 (v1.0 release readiness)
+
+### Fixed
+- **Duplicate logging and double AI-scan charges**: every analysis entry point (voice, text, camera, multimodal sheet) could run a second analysis on top of a running one. All paths now guard on the in-flight state.
+- **Silent data loss**: logging paths used `try? modelContext.save()` and then showed a success toast. Saves are now checked, failures surface a real error, and a failed save no longer consumes a free AI scan.
+- **Hydration no longer spends an AI credit**: water is parsed on-device before any cloud call, and the voice-hydration path consumes no scan (it was previously inconsistent with the text path).
+- **Captured photo survives the paywall**: the shot is kept until the analysis actually starts, and it is analysed as soon as the user returns from the paywall.
+- **Water unit conversion in the Log sheet**: imperial users entered fl oz but the value was stored as ml (an 8 fl oz glass stored as 8 ml). The sheet now converts and labels per `UnitSystem`.
+- **Water sheet totals**: same-day entries are summed across all `DailyLog` rows instead of reading only the first match, and the water goal uses `@Query` instead of a fetch per render.
+- **Reset All Data**: a failed save no longer drops the user into onboarding on top of surviving data (which created a second profile), and reminders are turned off with the reset instead of leaving the toggle ON with nothing scheduled.
+- **Notification permission dead-end**: toggling reminders on after permission was denied now explains the state and offers a route to iOS Settings.
+- **Food database alias shadowing**: the most specific alias now wins, so "black coffee" no longer matches Iced Latte and "chicken caesar salad" no longer matches the plain grilled chicken entry.
+- **Export date range**: a future-dated log (manual clock change, travel) could invert the picker range and trip a SwiftUI precondition; the start date is now clamped.
+- **CSV export dates** are pinned to the Gregorian calendar and `en_US_POSIX` instead of following the user's locale and calendar.
+- **Sheet dismissal**: dismissing the multimodal sheet mid-analysis no longer writes an entry the user never saw, and discarded recordings are removed from disk.
+
+### Changed
+- **Subscription pricing set for launch**, per storefront: EGP 29.99 / 69.99 / 599.99, AED and SAR 12.99 / 19.99 / 149.99, USD $2.99 / $7.99 / $39.99, EUR €3.49 / €8.99 / €44.99 (weekly / monthly / yearly). No introductory offers.
+- **Paywall prices are storefront-aware**: StoreKit's localized price wins, and until products load the fallback table quotes the correct currency for the user's storefront instead of a hardcoded USD figure. The yearly "save X%" badge is now computed from the real weekly and yearly prices.
+- **Free AI allowance raised from 3 to 15 scans** per install, with a one-time top-up applied to existing installs so nobody is left on the old balance.
+- **Shared persistence**: the SwiftData schema and container now live in one place (`SomaPersistence`) used by both the app and App Intents, instead of each intent building its own container over the same store.
+- **Pro status is cached**: a paying subscriber no longer briefly looks free at cold launch, and Siri no longer answers "Subscription Required" before StoreKit resolves.
+- **Gemini routing**: the attempt list was capped so a miss costs a few seconds instead of a multi-minute wait (the model order itself was revised on 2026-09-18 after measuring the live proxy).
+- **Paywall**: prices come from StoreKit only (the intended price is shown until products load), the plan rows can no longer push the sheet wider than the screen, and purchase/restore failures surface an alert instead of tapping Continue doing nothing silently.
+- Photo analysis downscales to 1024 px before upload, cutting the base64 payload by roughly 10x.
+- Siri water logging clamps the spoken amount to a plausible range.
+
+### Security
+- Cloud AI server error bodies are no longer written to logs in release builds (status code only).
+- The privacy manifest now declares Photos or Videos and Other User Content, matching what the AI features send off-device.
+
+### Added
+- `com.apple.developer.healthkit.background-delivery` entitlement, so health background delivery actually succeeds.
+- `ITSAppUsesNonExemptEncryption = NO` for the App Store upload questionnaire.
+
+### Removed
+- `SomaProducts.storekit` and `Secrets.xcconfig.template` no longer ship inside the app bundle.
+- Dead code: `InteractivePopGesture.swift`, `saveNutritionResult`, `currentLog`, `activeLog`/`todayLog`, `profileInitials`, `effectiveCount`, and the paywall's hardcoded `priceDescription`.
+
+---
+
 ## [Unreleased] - 2026-08-30
 
 ### New Features & Engine Updates

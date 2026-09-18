@@ -8,6 +8,7 @@ struct GoalsInputView: View {
     @Query private var profiles: [UserProfile]
 
     @Binding var draft: OnboardingDraft
+    @State private var saveFailed = false
 
     private let columns = [
         GridItem(.flexible(), spacing: 16),
@@ -84,6 +85,11 @@ struct GoalsInputView: View {
         .toolbarBackground(SomaColors.navy, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .background(SomaColors.navy.ignoresSafeArea())
+        .alert("Couldn't Save Your Profile", isPresented: $saveFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Soma couldn't save your profile. Please try again.")
+        }
     }
 
     private func saveProfile() {
@@ -112,7 +118,14 @@ struct GoalsInputView: View {
             modelContext.insert(profile)
         }
 
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            // Never finish onboarding on top of a profile that did not persist: the user
+            // would land in the app with no profile and no goals.
+            saveFailed = true
+            return
+        }
         appRouter.hasCompletedOnboarding = true
     }
 }

@@ -429,10 +429,15 @@ final class FoodNutritionDatabase {
             || (lower == "ازازة" || lower == "زجاجة" || lower == "كوباية" || lower == "كوبايتين")
         )
 
-        if hasWaterKeyword {
+        // A sentence that also names real food is a meal log. "شربت مية مع الكشري" used to be
+        // swallowed here and logged as a default glass of water, with the meal lost.
+        if hasWaterKeyword && databaseMatch(in: lower) == nil {
             var extractedAmount: Int
             if let num = extractFirstNumber(from: lower) {
-                extractedAmount = num
+                // "2 كوباية مية" means two cups, not two millilitres.
+                extractedAmount = num <= 20 && ["كوباية", "كوب", "كاسة", "cup", "glass"].contains(where: { lower.contains($0) })
+                    ? num * 250
+                    : num
             } else if lower.contains("كوبايتين") || lower.contains("كوبين") || lower.contains("two cups") {
                 extractedAmount = 500
             } else if lower.contains("كوباية") || lower.contains("كوب") || lower.contains("كاسة") || lower.contains("cup") {
@@ -502,28 +507,24 @@ final class FoodNutritionDatabase {
             )
         }
 
-        // 4. Fuzzy database search for branded fast food, staples, and Egyptian favorites
-        for item in foodDatabase {
-            for alias in item.aliases {
-                if lower.contains(alias) {
-                    return ParsedNutritionResult(
-                        type: .food(
-                            title: item.name,
-                            calories: item.calories,
-                            proteinG: item.proteinG,
-                            carbsG: item.carbsG,
-                            fatG: item.fatG
-                        ),
-                        title: item.name,
-                        calories: item.calories,
-                        proteinG: item.proteinG,
-                        carbsG: item.carbsG,
-                        fatG: item.fatG,
-                        waterML: 0,
-                        summary: "Logged \(item.name): \(item.calories) kcal, \(Int(item.proteinG))g protein"
-                    )
-                }
-            }
+        // 4. Fuzzy database search for branded fast food, staples, and Egyptian favorites.
+        if let item = databaseMatch(in: lower) {
+            return ParsedNutritionResult(
+                type: .food(
+                    title: item.name,
+                    calories: item.calories,
+                    proteinG: item.proteinG,
+                    carbsG: item.carbsG,
+                    fatG: item.fatG
+                ),
+                title: item.name,
+                calories: item.calories,
+                proteinG: item.proteinG,
+                carbsG: item.carbsG,
+                fatG: item.fatG,
+                waterML: 0,
+                summary: "Logged \(item.name): \(item.calories) kcal, \(Int(item.proteinG))g protein"
+            )
         }
 
         // 5. Intelligent NLP Fallback for unlisted meal descriptions
@@ -593,6 +594,17 @@ final class FoodNutritionDatabase {
             waterML: 0,
             summary: "Logged \(title): \(estCal) kcal, \(Int(estProtein))g protein"
         )
+    }
+
+    /// The most specific database entry mentioned in the text, if any. The longest alias wins so
+    /// "black coffee" beats "coffee" on the iced latte row.
+    private func databaseMatch(in lower: String) -> FoodItemInfo? {
+        foodDatabase
+            .flatMap { item in
+                item.aliases.filter { lower.contains($0) }.map { (item: item, aliasLength: $0.count) }
+            }
+            .max(by: { $0.aliasLength < $1.aliasLength })?
+            .item
     }
 
     /// Converts Eastern Arabic numerals (٠-٩) to ASCII numerals (0-9)

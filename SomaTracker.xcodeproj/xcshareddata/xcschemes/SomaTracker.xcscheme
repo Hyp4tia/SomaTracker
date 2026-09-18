@@ -51,6 +51,9 @@
             ReferencedContainer = "container:SomaTracker.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <StoreKitConfigurationFileReference
+         identifier = "../../SomaTracker/Services/Subscription/SomaProducts.storekit">
+      </StoreKitConfigurationFileReference>
       <StoreKitConfiguration
          relativeFilePath = "SomaTracker/Services/Subscription/SomaProducts.storekit">
       </StoreKitConfiguration>

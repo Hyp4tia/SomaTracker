@@ -53,10 +53,6 @@ struct HistoryView: View {
         logs.filter { calendar.isDate($0.date, inSameDayAs: selectedDate) }
     }
 
-    private var currentLog: DailyLog? {
-        currentLogs.first
-    }
-
     private var dayCalories: Int {
         currentLogs.reduce(0) { $0 + $1.totalCalories }
     }
@@ -739,16 +735,22 @@ struct HistoryView: View {
 
     private func deleteFoodEntry(_ entry: FoodEntry, from log: DailyLog?) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let dayLog = entry.dailyLog ?? log
         withAnimation(.snappy) {
             entry.deleteWithSyncedAIEntry(from: log, in: modelContext)
         }
+        // Health keeps its own copy, so a removal has to be mirrored too.
+        Task { await HealthSyncService.shared.syncDay(dayLog) }
     }
 
     private func deleteWaterEntry(_ entry: WaterEntry, from log: DailyLog?) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let dayLog = entry.dailyLog ?? log
         withAnimation(.snappy) {
             entry.deleteWithSyncedAIEntry(from: log, in: modelContext)
         }
+        // Health keeps its own copy, so a removal has to be mirrored too.
+        Task { await HealthSyncService.shared.syncDay(dayLog) }
     }
 }
 
@@ -779,6 +781,7 @@ struct EditHistoryEntrySheet: View {
 
     @State private var displayValue = "0"
     @State private var descriptionText = ""
+    @State private var saveErrorMessage: String?
     @FocusState private var isDescriptionFocused: Bool
 
     private var unitSystem: UnitSystem { UnitSystem(rawValue: unitSystemRaw) ?? .metric }
@@ -823,6 +826,14 @@ struct EditHistoryEntrySheet: View {
 
     private var canSave: Bool {
         numericValue > 0
+    }
+
+    /// The day this entry belongs to, so an edit can be mirrored into Health after saving.
+    private var entryDayLog: DailyLog? {
+        switch item {
+        case .food(let entry): return entry.dailyLog
+        case .water(let entry): return entry.dailyLog
+        }
     }
 
     var body: some View {
@@ -883,6 +894,14 @@ struct EditHistoryEntrySheet: View {
         .presentationDetents([.fraction(0.78)])
         .presentationDragIndicator(.visible)
         .presentationBackground(Color(.systemBackground))
+        .alert("Couldn't Save Change", isPresented: .init(
+            get: { saveErrorMessage != nil },
+            set: { if !$0 { saveErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { saveErrorMessage = nil }
+        } message: {
+            Text(saveErrorMessage ?? "")
+        }
     }
 
     private func loadInitialData() {
@@ -1059,7 +1078,18 @@ struct EditHistoryEntrySheet: View {
             }
         }
 
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            // Keep the sheet open with the edited values still in the fields so saving can be
+            // retried: the previous `try?` dismissed as if the change had landed.
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            saveErrorMessage = "Your change couldn't be saved. Please try again."
+            return
+        }
+
+        // Health holds its own copy of the entry, so the edit is mirrored once it is saved.
+        Task { await HealthSyncService.shared.syncDay(entryDayLog) }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         dismiss()
     }

@@ -3,12 +3,13 @@
 //  SomaTracker
 //
 //  Production-ready StoreKit 2 & RevenueCat-compatible subscription manager.
-//  Provides 3 free AI trial scans and manages Pro entitlements.
+//  Provides a free AI scan allowance and manages Pro entitlements.
 //
 
 import Foundation
 import StoreKit
 import Observation
+import UIKit
 
 @Observable
 final class SubscriptionManager: NSObject {
@@ -39,14 +40,21 @@ final class SubscriptionManager: NSObject {
     /// Expiration or renewal date for StoreKit subscription
     var subscriptionExpirationDate: Date? = nil
 
-    /// Free scans remaining for un-subscribed users (starts at 3)
+    /// Free AI scans every user gets before Pro. Bump `freeScanAllowanceVersion` whenever this
+    /// number changes so existing installs are topped up once instead of keeping a stale balance.
+    static let freeScanAllowance = 15
+    private static let freeScanAllowanceVersion = 2
+    private static let freeScansKey = "soma_remaining_free_scans"
+    private static let freeScanAllowanceVersionKey = "soma_free_scan_allowance_version"
+
+    /// Free scans remaining for un-subscribed users (starts at `freeScanAllowance`)
     var remainingFreeScans: Int {
         didSet {
-            UserDefaults.standard.set(remainingFreeScans, forKey: "soma_remaining_free_scans")
+            UserDefaults.standard.set(remainingFreeScans, forKey: Self.freeScansKey)
         }
     }
 
-    /// User can use AI if they are Pro OR if they still have free trial scans
+    /// User can use AI if they are Pro OR if they still have free scans left
     var canUseAIFeatures: Bool {
         isPro || remainingFreeScans > 0
     }
@@ -54,11 +62,29 @@ final class SubscriptionManager: NSObject {
     private var updatesTask: Task<Void, Never>? = nil
 
     private override init() {
-        if UserDefaults.standard.object(forKey: "soma_remaining_free_scans") == nil {
-            self.remainingFreeScans = 3
-            UserDefaults.standard.set(3, forKey: "soma_remaining_free_scans")
+        // Grant the current allowance once per allowance version: an install still holding the
+        // old 3-scan balance is topped up to 15, then keeps whatever it has left afterwards.
+        let storedVersion = UserDefaults.standard.integer(forKey: Self.freeScanAllowanceVersionKey)
+        let storedScans = UserDefaults.standard.object(forKey: Self.freeScansKey) as? Int
+
+        let resolvedScans: Int
+        if storedVersion < Self.freeScanAllowanceVersion {
+            resolvedScans = max(storedScans ?? Self.freeScanAllowance, Self.freeScanAllowance)
+            UserDefaults.standard.set(Self.freeScanAllowanceVersion, forKey: Self.freeScanAllowanceVersionKey)
         } else {
-            self.remainingFreeScans = UserDefaults.standard.integer(forKey: "soma_remaining_free_scans")
+            resolvedScans = storedScans ?? Self.freeScanAllowance
+        }
+        self.remainingFreeScans = resolvedScans
+        // Property observers do not fire during init, so write the resolved balance here.
+        UserDefaults.standard.set(resolvedScans, forKey: Self.freeScansKey)
+
+        // Seed from the last resolved entitlement: StoreKit answers asynchronously, and
+        // App Intents can run before it does, so a paying subscriber must not start out
+        // looking like a free user (UPGRADE badge, "Subscription Required" from Siri).
+        if UserDefaults.standard.object(forKey: CacheKey.isPro) as? Bool == true {
+            self.isPro = true
+            self.activePlanName = UserDefaults.standard.string(forKey: CacheKey.planName)
+            self.activePlanDuration = UserDefaults.standard.string(forKey: CacheKey.planDuration)
         }
 
         // Initialize Pro status with dev access if active
@@ -101,6 +127,11 @@ final class SubscriptionManager: NSObject {
     func refreshProducts() async {
         do {
             let products = try await Product.products(for: ProductID.allRawValues)
+            #if DEBUG
+            // Confirms what StoreKit is actually returning while testing prices per storefront.
+            let country = await Storefront.current?.countryCode ?? "nil"
+            print("[SubscriptionManager] storefront=\(country) count=\(products.count) prices=\(products.map(\.displayPrice))")
+            #endif
             await MainActor.run {
                 // Sort: Yearly first (Best Value), Monthly, then Weekly
                 self.availableProducts = products.sorted { p1, p2 in
@@ -163,6 +194,7 @@ final class SubscriptionManager: NSObject {
             self.activePlanName = planName
             self.activePlanDuration = planDuration
             self.subscriptionExpirationDate = expDate
+            self.cacheResolvedState(isPro: active, planName: planName, planDuration: planDuration)
         }
     }
 
@@ -223,6 +255,21 @@ final class SubscriptionManager: NSObject {
         }
     }
 
+    /// Opens Apple's own subscription management sheet: the route Apple expects apps selling
+    /// auto-renewable subscriptions to offer. Nothing user-facing on failure, because the only
+    /// realistic throw is an unusable scene, where the tap simply does nothing.
+    func manageSubscriptions() async {
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }) else { return }
+
+        do {
+            try await AppStore.showManageSubscriptions(in: scene)
+        } catch {
+            print("[SubscriptionManager] Couldn't open manage subscriptions: \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - Free Tier Scan Consumption
 
     /// Consumes 1 free scan if the user is not Pro. Returns true if scan was permitted.
@@ -241,7 +288,20 @@ final class SubscriptionManager: NSObject {
     }
 
     // MARK: - Helpers
- 
+
+    /// Mirrors the last resolved entitlement into UserDefaults for the next cold launch.
+    private enum CacheKey {
+        static let isPro = "soma_is_pro_cached"
+        static let planName = "soma_cached_plan_name"
+        static let planDuration = "soma_cached_plan_duration"
+    }
+
+    private func cacheResolvedState(isPro: Bool, planName: String?, planDuration: String?) {
+        UserDefaults.standard.set(isPro, forKey: CacheKey.isPro)
+        UserDefaults.standard.set(planName, forKey: CacheKey.planName)
+        UserDefaults.standard.set(planDuration, forKey: CacheKey.planDuration)
+    }
+
     nonisolated static func checkVerified<T>(_ result: VerificationResult<T>) throws -> T {
         switch result {
         case .unverified(_, let error):
@@ -295,6 +355,7 @@ final class SubscriptionManager: NSObject {
             self.activePlanName = planName
             self.activePlanDuration = planDuration
             self.subscriptionExpirationDate = expDate
+            self.cacheResolvedState(isPro: active, planName: planName, planDuration: planDuration)
         }
     }
 
@@ -309,11 +370,13 @@ final class SubscriptionManager: NSObject {
             self.activePlanName = "Developer Testing Pass"
             self.activePlanDuration = "Unlimited Access"
             self.subscriptionExpirationDate = nil
+            cacheResolvedState(isPro: true, planName: activePlanName, planDuration: activePlanDuration)
         case .revoked:
             self.isPro = false
             self.activePlanName = nil
             self.activePlanDuration = nil
             self.subscriptionExpirationDate = nil
+            cacheResolvedState(isPro: false, planName: nil, planDuration: nil)
             Task {
                 await checkCurrentEntitlements()
             }
