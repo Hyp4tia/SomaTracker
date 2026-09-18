@@ -40,28 +40,17 @@ struct LogWaterAppIntent: AppIntent {
         // over the same store would be a needless second writer on one SQLite file.
         let context = SomaPersistence.shared.mainContext
         let todayLog = DailyLog.fetchOrCreateToday(context: context)
-        let aiEntryId = UUID()
 
         // Siri takes free text, so keep the amount inside a physically plausible bottle.
         let targetML = min(max(1, amount), 2_000)
-        let entry = WaterEntry(amount: targetML, timestamp: .now, label: "Soma AI", aiMealEntryId: aiEntryId)
-        todayLog.waterEntries.append(entry)
-
-        let aiEntry = AIMealEntry(
-            id: aiEntryId,
-            title: "Hydration (\(targetML) ml)",
+        // Hydration is free: it never spends one of the user's AI scans.
+        AIMealEntry.logHydration(
+            amountML: targetML,
+            story: "Voice logged via Siri: \(targetML) ml water.",
+            summary: "Logged \(targetML) ml of water via Siri.",
             location: "Logged with Soma AI",
-            storyText: "Voice logged via Siri: \(targetML) ml water.",
-            calories: 0,
-            proteinG: 0,
-            carbsG: 0,
-            fatG: 0,
-            breakdownNotes: "Logged \(targetML) ml of water via Siri."
+            in: context
         )
-        aiEntry.dailyLog = todayLog
-        context.insert(aiEntry)
-
-        SubscriptionManager.shared.consumeFreeScanIfFreeUser()
 
         do {
             try context.save()
@@ -115,24 +104,13 @@ struct LogMealAppIntent: AppIntent {
         // 1. First check if user is logging water: "log 100 water", "50 water", "سجل ١٠٠ مية"
         let waterCheck = FoodNutritionDatabase.shared.parseInput(item)
         if waterCheck.isWater {
-            let waterEntry = WaterEntry(amount: waterCheck.waterML, timestamp: .now, label: "Soma AI", aiMealEntryId: aiEntryId)
-            todayLog.waterEntries.append(waterEntry)
-
-            let aiEntry = AIMealEntry(
-                id: aiEntryId,
-                title: "Hydration (\(waterCheck.waterML) ml)",
+            AIMealEntry.logHydration(
+                amountML: waterCheck.waterML,
+                story: "Captured via Siri: \"\(item)\".",
+                summary: waterCheck.summary,
                 location: "Logged with Soma AI",
-                storyText: "Captured via Siri: \"\(item)\".",
-                calories: 0,
-                proteinG: 0,
-                carbsG: 0,
-                fatG: 0,
-                breakdownNotes: waterCheck.summary
+                in: context
             )
-            aiEntry.dailyLog = todayLog
-            context.insert(aiEntry)
-
-            SubscriptionManager.shared.consumeFreeScanIfFreeUser()
 
             do {
                 try context.save()
@@ -156,6 +134,33 @@ struct LogMealAppIntent: AppIntent {
             photos: [],
             audioURL: nil
         )
+
+        // 2b. An engine can still answer with water ("شربت مياه"), which belongs in the hydration
+        // tracker rather than the food log.
+        if analysis.isWaterLog {
+            AIMealEntry.logHydration(
+                amountML: analysis.waterML,
+                story: "Captured via Siri: \"\(item)\".",
+                summary: analysis.storyNarrative.isEmpty ? analysis.title : analysis.storyNarrative,
+                location: "Logged with Soma AI",
+                in: context
+            )
+
+            do {
+                try context.save()
+            } catch {
+                return .result(
+                    value: "Not Logged",
+                    dialog: "Soma couldn't save that. Please try again."
+                )
+            }
+            await HealthSyncService.shared.syncDay(todayLog)
+
+            return .result(
+                value: "Logged \(analysis.waterML) ml",
+                dialog: "Added \(analysis.waterML) ml of water to your daily hydration in Soma."
+            )
+        }
 
         // 3. Standard Food Entry in DailyLog
         let foodEntry = FoodEntry(

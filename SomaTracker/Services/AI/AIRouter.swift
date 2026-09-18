@@ -50,7 +50,29 @@ final class AIRouter {
 
         let config = APIConfiguration.shared
 
-        // Step 2: Route to Gemini Flash for all modalities (Photos, Voice Audio, Arabic/English Text)
+        // Step 2: Apple's own engine answers first. For text and voice it is instant, free, and the
+        // user's words never leave the iPhone; on iOS 27 it reads photos too. The cloud is the
+        // second opinion, taking over when this device cannot run the model, when the model does not
+        // read the language of the log (Arabic today), when a local answer takes too long, or when
+        // it fails the numeric consistency checks.
+        let appleEngineCanTry = OnDeviceAISettings.isEnabled
+            && (photos.isEmpty || OnDeviceAIService.supportsImageInput)
+        if appleEngineCanTry {
+            do {
+                return try await OnDeviceAIService.shared.analyze(
+                    userNotes: !combinedText.isEmpty ? combinedText : notes,
+                    photoDataList: photos,
+                    voiceTranscription: effectiveVoice,
+                    alternativeTranscriptions: alternativeTranscriptions
+                )
+            } catch {
+                #if DEBUG
+                print("[AIRouter] Apple engine declined (\(error)); asking the cloud engine.")
+                #endif
+            }
+        }
+
+        // Step 3: Route to Gemini Flash for all modalities (Photos, Voice Audio, Arabic/English Text)
         if config.hasCloudVisionReady {
             do {
                 let service = GeminiAIService()
@@ -73,7 +95,7 @@ final class AIRouter {
         // fallback and the UI is told, rather than blaming the user's input for an outage.
         let fallbackEngine: AIMealAnalysisResult.Engine = config.hasCloudVisionReady ? .onDeviceFallback : .onDevice
 
-        // Step 3: On-Device Intelligent Nutrition & NLP Engine
+        // Step 4: On-Device Intelligent Nutrition & NLP Engine
         let parsed = FoodNutritionDatabase.shared.parseInput(combinedText)
 
         let narrative = !combinedText.isEmpty
@@ -92,6 +114,7 @@ final class AIRouter {
             proteinG: parsed.proteinG,
             carbsG: parsed.carbsG,
             fatG: parsed.fatG,
+            waterML: parsed.waterML,
             confidence: 0.94,
             items: [
                 AIFoodItemBreakdown(

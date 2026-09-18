@@ -419,6 +419,28 @@ struct AIMultimodalInputSheet: View {
                     return
                 }
 
+                // Water goes to the hydration tracker, and hydration never spends a free scan.
+                if result.isWaterLog {
+                    AIMealEntry.logHydration(
+                        amountML: result.waterML,
+                        story: result.storyNarrative,
+                        summary: result.title,
+                        photos: selectedPhotos,
+                        voiceRelativePath: recordedRelativePath,
+                        waveformSamples: recordedWaveformSamples,
+                        duration: recordedDuration,
+                        in: modelContext
+                    )
+                    do {
+                        try modelContext.save()
+                    } catch {
+                        errorMessage = "Couldn't save this entry. Please try again."
+                        return
+                    }
+                    dismiss()
+                    return
+                }
+
                 let newEntry = AIMealEntry(
                     title: result.title,
                     location: result.location,

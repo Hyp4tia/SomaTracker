@@ -72,10 +72,12 @@ struct AIMealAnalysisResult: Codable {
     /// UI can tell "Soma AI could not be reached" apart from "the AI found no food here".
     enum Engine {
         case cloud
-        /// Cloud is configured but the call failed, so this is the on-device fallback.
+        /// The cloud was tried and failed, so the keyword engine answered offline.
         case onDeviceFallback
-        /// Cloud is not configured at all, so the on-device engine handled it.
+        /// Apple's on-device model answered: the first choice on Apple Intelligence devices.
         case onDevice
+        /// Apple's Private Cloud Compute model answered: the paid-feeling path that costs nothing.
+        case privateCloud
     }
 
     var engine: Engine = .cloud
@@ -87,10 +89,18 @@ struct AIMealAnalysisResult: Codable {
     let proteinG: Double
     let carbsG: Double
     let fatG: Double
+    /// Hydration in millilitres. Water is a drink, not a food, so an entry with a positive amount
+    /// is routed to the hydration tracker instead of the food log, whatever the title says.
+    let waterML: Int
     let confidence: Double
     let items: [AIFoodItemBreakdown]
 
+    /// True when the engines recognised a water log rather than a meal.
+    var isWaterLog: Bool { waterML > 0 }
+
     var isNoFood: Bool {
+        // Water has no calories and no items, which used to read as "nothing was logged".
+        if waterML > 0 { return false }
         let t = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if t == "no food detected" || t == "no food" || t.contains("no food") || t == "لا يوجد طعام" || t.contains("لم يتم التعرف") {
             return true
@@ -122,6 +132,7 @@ struct AIMealAnalysisResult: Codable {
 
     enum CodingKeys: String, CodingKey {
         case title, location, storyNarrative, calories, proteinG, carbsG, fatG, confidence, items
+        case waterML, water_ml
         case story_narrative, protein_g, carbs_g, fat_g
     }
 
@@ -133,6 +144,7 @@ struct AIMealAnalysisResult: Codable {
         proteinG: Double,
         carbsG: Double,
         fatG: Double,
+        waterML: Int = 0,
         confidence: Double,
         items: [AIFoodItemBreakdown],
         engine: Engine = .cloud
@@ -144,6 +156,7 @@ struct AIMealAnalysisResult: Codable {
         self.proteinG = proteinG
         self.carbsG = carbsG
         self.fatG = fatG
+        self.waterML = waterML
         self.confidence = confidence
         self.items = items
         self.engine = engine
@@ -168,6 +181,19 @@ struct AIMealAnalysisResult: Codable {
         self.proteinG = Self.extractDouble(from: container, primary: .proteinG, secondary: .protein_g)
         self.carbsG = Self.extractDouble(from: container, primary: .carbsG, secondary: .carbs_g)
         self.fatG = Self.extractDouble(from: container, primary: .fatG, secondary: .fat_g)
+
+        if let water = try? container.decode(Int.self, forKey: .waterML) {
+            self.waterML = water
+        } else if let waterAlt = try? container.decode(Int.self, forKey: .water_ml) {
+            self.waterML = waterAlt
+        } else if let waterDouble = try? container.decode(Double.self, forKey: .waterML) {
+            self.waterML = Int(waterDouble)
+        } else if let waterDoubleAlt = try? container.decode(Double.self, forKey: .water_ml) {
+            self.waterML = Int(waterDoubleAlt)
+        } else {
+            self.waterML = 0
+        }
+
         self.confidence = (try? container.decode(Double.self, forKey: .confidence)) ?? 0.90
 
         if let directItems = try? container.decode([AIFoodItemBreakdown].self, forKey: .items) {
@@ -198,6 +224,7 @@ struct AIMealAnalysisResult: Codable {
         try container.encode(proteinG, forKey: .proteinG)
         try container.encode(carbsG, forKey: .carbsG)
         try container.encode(fatG, forKey: .fatG)
+        try container.encode(waterML, forKey: .waterML)
         try container.encode(confidence, forKey: .confidence)
         try container.encode(items, forKey: .items)
     }

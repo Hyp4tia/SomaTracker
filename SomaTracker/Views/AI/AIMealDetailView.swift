@@ -325,7 +325,7 @@ struct AIMealDetailView: View {
     // MARK: - Actions & Helpers
 
     private func logToDailyTracker() {
-        entry.syncToFoodEntry(in: modelContext)
+        logEntryIntoDay()
         Task { await HealthSyncService.shared.syncDay(entry.dailyLog) }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
 
@@ -338,6 +338,25 @@ struct AIMealDetailView: View {
                 showLoggedToast = false
             }
         }
+    }
+
+    /// Water reaches the day through the hydration tracker, everything else as a food entry.
+    private func logEntryIntoDay() {
+        guard entry.waterML > 0 else {
+            entry.syncToFoodEntry(in: modelContext)
+            return
+        }
+
+        // A hydration log already sits in the day when it is created, so a second tap must not
+        // add the same glass of water twice.
+        let log = entry.dailyLog ?? DailyLog.fetchOrCreateToday(context: modelContext)
+        guard !log.waterEntries.contains(where: { $0.aiMealEntryId == entry.id }) else { return }
+
+        log.waterEntries.append(
+            WaterEntry(amount: entry.waterML, timestamp: entry.timestamp, label: "Soma AI", aiMealEntryId: entry.id)
+        )
+        entry.dailyLog = log
+        try? modelContext.save()
     }
 
     private func deleteEntry() {
@@ -433,7 +452,7 @@ struct AIMealDetailView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
-                        entry.syncToFoodEntry(in: modelContext)
+                        logEntryIntoDay()
                         do {
                             try modelContext.save()
                             // Health holds its own copy, so mirror the edit once it is saved.

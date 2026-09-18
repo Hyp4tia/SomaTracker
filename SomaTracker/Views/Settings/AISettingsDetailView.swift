@@ -10,6 +10,7 @@ import SwiftUI
 struct AISettingsDetailView: View {
     @State private var subscriptionManager = SubscriptionManager.shared
     @State private var showPaywall = false
+    @AppStorage(OnDeviceAISettings.defaultsKey) private var onDeviceAI = true
 
     var body: some View {
         List {
@@ -75,7 +76,40 @@ struct AISettingsDetailView: View {
                 Text("STATUS")
             }
 
-            // Section 2: Siri & Action Button Shortcuts
+            // Section 2: Which engine answers
+            Section {
+                Toggle(isOn: $onDeviceAI) {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(SomaColors.iris)
+                                .frame(width: 32, height: 32)
+
+                            Image(systemName: "cpu")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("On-device analysis")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color(.label))
+
+                            Text(engineStatusText)
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+                    }
+                    .padding(.vertical, 3)
+                }
+                .disabled(!OnDeviceAIService.isReady)
+            } header: {
+                Text("ANALYSIS ENGINE")
+            } footer: {
+                Text("Meals you describe by voice or text are estimated on this iPhone, so the answer is instant and your words stay on it. The cloud model is asked when the on-device answer needs more muscle, when it takes too long, and for every photo.")
+            }
+
+            // Section 3: Siri & Action Button Shortcuts
             Section {
                 featureRow(
                     icon: "mic.fill",
@@ -130,6 +164,19 @@ struct AISettingsDetailView: View {
         .hideTabBarWithCoordinator()
         .sheet(isPresented: $showPaywall) {
             SomaPaywallView()
+        }
+    }
+
+    private var engineStatusText: String {
+        switch OnDeviceAIService.status {
+        case .ready:
+            return onDeviceAI ? "First choice, cloud as the second opinion" : "Off, everything goes to the cloud"
+        case .needsNewerSystem:
+            return "Needs iOS 26 or later"
+        case .languageUnsupported(let reason):
+            return reason
+        case .unavailable(let reason):
+            return reason
         }
     }
 

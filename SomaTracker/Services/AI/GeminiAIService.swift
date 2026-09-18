@@ -48,24 +48,14 @@ final class GeminiAIService: AIServiceProtocol {
 
         var parts: [[String: Any]] = []
 
-        // 1. Text description & user query
-        var promptLines: [String] = ["Analyze this meal entry:"]
-        if let notes = userNotes, !notes.isEmpty {
-            promptLines.append("Spoken or written description: \"\(notes)\"")
-        }
-        if let voice = voiceTranscription, !voice.isEmpty, voice != userNotes {
-            promptLines.append("Voice dictation transcription: \"\(voice)\"")
-        }
-        if !alternativeTranscriptions.isEmpty {
-            promptLines.append("Acoustic candidate variations (from fast speech / alternative hypotheses): [\(alternativeTranscriptions.map { "\"\($0)\"" }.joined(separator: ", "))]")
-        }
-        if !photoDataList.isEmpty {
-            promptLines.append("The entry includes \(photoDataList.count) photo(s). Carefully examine visible food, portion sizes, brand packaging, can/bottle labels, and printed nutrition facts.")
-        }
-        promptLines.append("""
-        Please estimate the meal title, general location or setting if mentioned (otherwise empty string), a brief natural narrative (1-2 sentences), total calories, protein (g), carbs (g), and fat (g), and item breakdown.
-        """)
-        let combinedPrompt = promptLines.joined(separator: "\n")
+        // 1. Text description & user query, built by the shared prompt source so the cloud and the
+        // on-device engine are handed identical wording.
+        let combinedPrompt = SomaAIPrompts.mealPrompt(
+            notes: userNotes,
+            voiceTranscription: voiceTranscription,
+            alternativeTranscriptions: alternativeTranscriptions,
+            photoCount: photoDataList.count
+        )
         parts.append(["text": combinedPrompt])
 
         // 2. Multimodal Photos (up to 5, base64 encoded)
@@ -90,46 +80,8 @@ final class GeminiAIService: AIServiceProtocol {
             ])
         }
 
-        let systemInstruction = """
-        You are Soma AI, an elite multilingual nutrition and diet intelligence engine following an elevated, minimal aesthetic.
-        You natively understand all languages and regional dialects, with deep native mastery of Arabic and its dialects, especially Egyptian Arabic (اللهجة المصرية: e.g. كشري، حواوشي، فول، طعمية، ملوخية، كفتة، كبدة إسكندراني، شاورما، رز معمر، فطير مشلتت، كباب، ممبار، بامية، محشي، عصير قصب, and Franco-Arab/Arabizi like "akalt koshary" or "sandwitch hawawshi").
-
-        Rules:
-        1. Language Matching: If the user inputs text, audio, or food in Arabic or Egyptian dialect, return the "title" and "storyNarrative" in natural, warm Arabic (matching their dialect/phrasing). If the user uses English, respond in English.
-        2. Macro Accuracy & Hidden Fats: Accurately estimate traditional portion sizes, cooking oils/ghee, and typical regional recipes (e.g. baladi bread, tahini, fava beans). For restaurant, Egyptian eatery, or takeout meals (e.g. pizzas, burgers, chicken ranch pizza, pasta, wraps, hawawshi, koshary with fried onions, shawarma fat cap, dressings), realistically account for typical restaurant cooking oils, ghee, and sauces. If homemade or diet is specified, adjust oils accordingly.
-        3. Complete Plate Decomposition: For photos, break down the plate into every visible constituent component in "items" (main protein, starch, vegetables, sauces, dips, and bread). Never overlook calorie-dense condiments like tahini, garlic dip (toum), mayonnaise, or butter.
-        4. Mathematical Macro Consistency: Total "calories" MUST be mathematically consistent with the macro breakdown: calories ≈ (proteinG * 4) + (carbsG * 4) + (fatG * 9). The total calories must equal the sum of calories across all "items" in the breakdown.
-        5. Hydration: If the user is logging water (e.g. "مية", "ماء", "شربت مية", "water", "hydration"), include the water amount in ml in the title (e.g. "ماء ٢٥٠ مل" or "250ml Water") and set calories to 0.
-        6. Speech & Dialect Slurring Tolerance: The input comes from speech-to-text dictation. Fast speakers, slurred pronunciation, and regional accents (especially Egyptian Arabic) often drop letters (e.g. dropping hamzas like "كوبايه" -> "كوباية" or "مايه" -> "ماء", dropping glottal stops like "أهوة" -> "قهوة", or blending connected words like "شايبلبن" or "سندوتشينحواوشي", or slurred English fast-food phrases). Intelligently reconstruct the user's intended food items, ingredients, and quantities dynamically from the acoustic phonetic context, regardless of slurring, typos, or omitted letters.
-        7. Packaged Beverages, Cans & Nutrition Labels (OCR Priority):
-           - When analyzing photos or descriptions of packaged drinks (such as sodas, sparkling water, energy drinks, juices), snack bags, or labeled containers:
-           - ALWAYS inspect the packaging labels carefully for diet or low-calorie indicators: e.g. "Diet", "Zero Sugar", "Free", "Light", "No Added Sugar", "خالي من السكر", "زيرو", "دايت", "سفن أب موهيتو ليمون".
-           - Read any printed nutrition panel, calorie stamp, or nutritional values (e.g. "2 kcal per 245ml", "1 kcal / 100ml").
-           - YOU MUST USE THE PRINTED NUTRITION NUMBER. NEVER default to standard full-sugar soda values (100–150 kcal) if the can or bottle indicates a zero, diet, or low-calorie variant (e.g. 7up Lemon Mojito is ~2 kcal per 245ml can, Diet Pepsi is 1 kcal, Coca-Cola Zero is 1 kcal).
-           - Identify container sizes: slim can (245ml–250ml), standard can (330ml), or bottle (500ml). If packaging prints calories per 100ml, scale to the full container depicted.
-        8. Silence & Non-Food Guard: If the input (audio, text, or photo) contains NO food, NO drinks, is pure room silence, microphone static, ambient background noise, or unintelligible non-food sounds, you MUST return title "No Food Detected" with 0 calories and empty items. NEVER fabricate, invent, or hallucinate food when no food or beverage is present or mentioned.
-        9. Return ONLY valid JSON matching this schema:
-        {
-          "title": "Short descriptive meal title (e.g. كشري مصري, 7up Lemon Mojito, or Grilled Salmon Bowl, or 'No Food Detected' if silent/no food)",
-          "location": "City, restaurant name or setting if mentioned (e.g. كشري التحرير or Downtown Cairo), otherwise empty string",
-          "storyNarrative": "A warm, natural 1-2 sentence description of the meal and nutritional value",
-          "calories": 650,
-          "proteinG": 18.0,
-          "carbsG": 115.0,
-          "fatG": 12.0,
-          "confidence": 0.95,
-          "items": [
-            {
-              "name": "كشري",
-              "portion": "طبق وسط",
-              "calories": 650,
-              "proteinG": 18.0,
-              "carbsG": 115.0,
-              "fatG": 12.0
-            }
-          ]
-        }
-        """
+        // Shared with the on-device engine so the two cannot describe different nutritionists.
+        let systemInstruction = SomaAIPrompts.cloudSystemInstruction
 
         let requestBody: [String: Any] = [
             "system_instruction": [

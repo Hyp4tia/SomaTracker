@@ -6,6 +6,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [Unreleased] - 2026-09-18d (water logs, brand names, iOS 27 vision)
+
+### Added
+- **Water is a hydration log wherever it is recognised.** Both engines now report an explicit `waterML` amount (new field in the cloud JSON contract and in the on-device guided-generation schema, plus a hydration rule that keeps calories, macros and items at zero), and every save path routes a water answer into `WaterEntry` and the AI journal instead of the food log: voice bar, text bar, camera, multimodal sheet, and both Siri intents. The two records share one id, so deleting either clears both, and hydration never spends a free AI scan.
+- **Apple's on-device model reads photos on iOS 27** (image attachments in a `LanguageModelSession`, capped at two photos for the 4K context window), so photo logs now try Apple's engine before the cloud.
+- **Private Cloud Compute as a second Apple stage**, behind the `soma_private_cloud_ai` default (off until the entitlement is assigned). It is skipped when the local attempt timed out, so it cannot stack delay on a busy device.
+- **Brand and venue awareness in the shared prompt**: known Egyptian venues, chains and delivery apps with their dictation confusions (بريد فاست arriving as "breakfast" or "bread fast", كوك دور as "cook door"), so a brand lands in `location` and never replaces the meal.
+
+### Changed
+- **Water spellings widened in the on-device parser**: مياه، مايه، ميّه، موية، كوبايتين and friends now parse as hydration instead of falling through to the meal path.
+- **The engine status tells the truth about languages.** Apple Intelligence does not support Arabic yet, so an Arabic app language reads "Apple Intelligence does not support Arabic yet, so logs go to the cloud" instead of promising local-first analysis, and Arabic logs skip the local attempt (Apple throws `unsupportedLanguageOrLocale` for them) and go straight to the cloud.
+- `AIMealEntry` gained `waterML`, so the journal and the entry screen can tell a glass of water from a zero-calorie meal.
+
+### Fixed
+- **A water log phrased in a way the local parser missed landed in the food log** as a zero-calorie meal titled like water. Fixed at the source: the engines report the water amount, and every logging path saves it as hydration.
+
+---
+
+## [Unreleased] - 2026-09-18c (on-device analysis, cloud as second opinion)
+
+### Added
+- **On-device meal analysis on iOS 26 and later.** Apple's Foundation Models framework now answers text and voice logs first, with guided generation (`@Generable`) replacing hand-parsed JSON. Verified against the installed SDK (`SystemLanguageModel`, `LanguageModelSession`, `respond(to:generating:)`) and the framework is weak-linked, so the iOS 17.6 deployment target is untouched.
+- **The cloud is now the second opinion, not the default.** It takes over when this iPhone cannot run the on-device model, when a photo is involved, when a local answer takes longer than 2.5 seconds, or when the local answer fails its numeric checks (calories must match the macro breakdown within 25%, plausible macro ranges, non-empty title). Photos always use the cloud, which reads a plate better.
+- **Analysis engine switch** in Settings, AI and Siri, with live device status. Turning it off restores cloud-first behaviour exactly, making the whole change reversible from the UI without a rebuild.
+- `SomaAIPrompts`, one source of truth for the Egyptian-Arabic nutrition rules, shared by both engines so they cannot drift. The extracted text is byte-identical to the prompt that shipped, verified against the committed source.
+
+### Changed
+- `AIMealAnalysisResult` records which engine produced it: the cloud, Apple's on-device model, or the offline keyword fallback, so an unreachable-cloud message only appears when that is actually true.
+
+---
+
 ## [Unreleased] - 2026-09-18b (fake hydration logs, honest failures, paywall text)
 
 ### Fixed

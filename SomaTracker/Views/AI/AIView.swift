@@ -633,6 +633,26 @@ struct AIView: View {
                     alternativeTranscriptions: result.alternatives
                 )
 
+                // The engines recognise water too, including phrasings the local parser misses
+                // ("شربت ٥٠٠ مل مياه"). A water answer belongs in the hydration tracker, not in the
+                // food log, and it never spends a free scan, exactly like the local path above.
+                if analysis.isWaterLog {
+                    await MainActor.run {
+                        logLocalHydration(
+                            amountML: analysis.waterML,
+                            summary: analysis.storyNarrative.isEmpty ? analysis.title : analysis.storyNarrative,
+                            story: trimmedSpeech,
+                            voiceRelativePath: result.relativePath,
+                            waveformSamples: result.samples,
+                            duration: result.duration
+                        )
+                        withAnimation(.snappy(duration: 0.35)) {
+                            isAnalyzingAI = false
+                        }
+                    }
+                    return
+                }
+
                 // Guard against "No Food Detected"
                 guard !analysis.isNoFood, analysis.title != "No Food Detected" else {
                     if let url = result.audioURL {
@@ -788,6 +808,21 @@ struct AIView: View {
                 audioURL: nil
             )
 
+            // Water answered by an engine still belongs in the hydration tracker, not the food log.
+            if analysis.isWaterLog {
+                await MainActor.run {
+                    logLocalHydration(
+                        amountML: analysis.waterML,
+                        summary: analysis.storyNarrative.isEmpty ? analysis.title : analysis.storyNarrative,
+                        story: query
+                    )
+                    withAnimation(.snappy(duration: 0.35)) {
+                        isAnalyzingAI = false
+                    }
+                }
+                return
+            }
+
             // Guard against non-food text inputs
             guard !analysis.isNoFood, analysis.title != "No Food Detected" else {
                 await MainActor.run {
@@ -882,6 +917,22 @@ struct AIView: View {
                 photos: [jpegData],
                 audioURL: nil
             )
+
+            // A photo of a glass of water is hydration, not a zero-calorie meal.
+            if analysis.isWaterLog {
+                await MainActor.run {
+                    logLocalHydration(
+                        amountML: analysis.waterML,
+                        summary: analysis.storyNarrative.isEmpty ? analysis.title : analysis.storyNarrative,
+                        story: "Meal Photo",
+                        photos: [jpegData]
+                    )
+                    withAnimation(.snappy(duration: 0.35)) {
+                        isAnalyzingAI = false
+                    }
+                }
+                return
+            }
 
             // Guard against non-food photos (e.g. pets, objects, landscapes)
             guard !analysis.isNoFood, analysis.title != "No Food Detected" else {
@@ -980,34 +1031,21 @@ struct AIView: View {
         amountML: Int,
         summary: String,
         story: String,
+        photos: [Data] = [],
         voiceRelativePath: String? = nil,
         waveformSamples: [Float] = [],
         duration: TimeInterval = 0
     ) {
-        let todayLog = DailyLog.fetchOrCreateToday(context: modelContext)
-        let aiEntryId = UUID()
-
-        todayLog.waterEntries.append(
-            WaterEntry(amount: amountML, timestamp: .now, label: "Soma AI", aiMealEntryId: aiEntryId)
+        AIMealEntry.logHydration(
+            amountML: amountML,
+            story: story,
+            summary: summary,
+            photos: photos,
+            voiceRelativePath: voiceRelativePath,
+            waveformSamples: waveformSamples,
+            duration: duration,
+            in: modelContext
         )
-
-        let aiEntry = AIMealEntry(
-            id: aiEntryId,
-            title: "Hydration (\(amountML) ml)",
-            location: "",
-            storyText: story,
-            calories: 0,
-            proteinG: 0,
-            carbsG: 0,
-            fatG: 0,
-            photoDataList: [],
-            voiceAudioRelativePath: voiceRelativePath,
-            voiceWaveformSamples: waveformSamples,
-            voiceDurationSeconds: duration,
-            breakdownNotes: summary
-        )
-        aiEntry.dailyLog = todayLog
-        modelContext.insert(aiEntry)
 
         if persistContext() {
             UINotificationFeedbackGenerator().notificationOccurred(.success)

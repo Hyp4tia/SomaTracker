@@ -20,6 +20,10 @@ final class AIMealEntry {
     var carbsG: Double = 0.0
     var fatG: Double = 0.0
 
+    /// Hydration in millilitres when this entry is a water log, and 0 for food. Storing it lets the
+    /// journal tell a glass of water from a zero-calorie meal without re-reading titles.
+    var waterML: Int = 0
+
     // Store up to 5 photos as binary Data
     @Attribute(.externalStorage)
     var photoDataList: [Data] = []
@@ -50,7 +54,8 @@ final class AIMealEntry {
         voiceWaveformSamples: [Float] = [],
         voiceDurationSeconds: Double = 0.0,
         isBookmarked: Bool = false,
-        breakdownNotes: String = ""
+        breakdownNotes: String = "",
+        waterML: Int = 0
     ) {
         self.id = id
         self.timestamp = timestamp
@@ -67,6 +72,7 @@ final class AIMealEntry {
         self.voiceDurationSeconds = voiceDurationSeconds
         self.isBookmarked = isBookmarked
         self.breakdownNotes = breakdownNotes
+        self.waterML = waterML
     }
 
     /// Converts this AI meal entry into a standard FoodEntry in the user's DailyLog
@@ -99,6 +105,55 @@ final class AIMealEntry {
         log.foodEntries.append(entry)
         self.dailyLog = log
         try? context.save()
+        return entry
+    }
+}
+
+// MARK: - Hydration
+
+extension AIMealEntry {
+    /// Water is one event stored twice: a WaterEntry feeds the hydration ring, the streak and
+    /// Health, and an AIMealEntry keeps the story, the voice note and the photo in the journal. The
+    /// two share an id, so deleting either side clears both.
+    @discardableResult
+    static func logHydration(
+        amountML: Int,
+        story: String,
+        summary: String,
+        location: String = "",
+        photos: [Data] = [],
+        voiceRelativePath: String? = nil,
+        waveformSamples: [Float] = [],
+        duration: TimeInterval = 0,
+        in context: ModelContext
+    ) -> AIMealEntry {
+        let log = DailyLog.fetchOrCreateToday(context: context)
+        let id = UUID()
+        // The amount can come from a language model, so keep it inside a physically plausible bottle.
+        let amount = min(max(1, amountML), 5_000)
+
+        log.waterEntries.append(
+            WaterEntry(amount: amount, timestamp: .now, label: "Soma AI", aiMealEntryId: id)
+        )
+
+        let entry = AIMealEntry(
+            id: id,
+            title: "Hydration (\(amount) ml)",
+            location: location,
+            storyText: story,
+            calories: 0,
+            proteinG: 0,
+            carbsG: 0,
+            fatG: 0,
+            photoDataList: photos,
+            voiceAudioRelativePath: voiceRelativePath,
+            voiceWaveformSamples: waveformSamples,
+            voiceDurationSeconds: duration,
+            breakdownNotes: summary,
+            waterML: amount
+        )
+        entry.dailyLog = log
+        context.insert(entry)
         return entry
     }
 }

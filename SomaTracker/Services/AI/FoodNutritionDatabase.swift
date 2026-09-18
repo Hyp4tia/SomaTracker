@@ -420,12 +420,15 @@ final class FoodNutritionDatabase {
             || lower.contains("tea") || lower.contains("عصير") || lower.contains("بيبسي")
             || lower.contains("كولا") || lower.contains("سفن") || lower.contains("قهوة") || lower.contains("شاي")
 
+        // Every spelling dictation produces for water, including the ones it writes with an alef or
+        // a taa marbuta ("مياه", "مايه"): those used to miss this branch and land in the food log.
+        let arabicWaterNouns = ["مية", "ماء", "مياه", "مايه", "ميّه", "مويه", "موية", "ماي", "ازازة", "زجاجة", "قارورة", "كوباية", "كوبايتين", "كاسة"]
+        let arabicWater = arabicWaterNouns.contains { lower.contains($0) }
+
         let hasWaterKeyword = !isFlavoredOrSoda && (
-            lower.contains("water") || lower.contains("hydration") || lower.contains("drink water")
-            || lower.contains("drinking water") || lower.contains("شربت مية") || lower.contains("شربت ماء")
-            || lower.contains("مية") || lower.contains("ماء") || lower.contains("مويه") || lower.contains("ماي")
-            || lower.contains("ازازة مية") || lower.contains("زجاجة ماء") || lower.contains("قارورة ماء")
-            || lower.contains("كوباية مية") || lower.contains("كوبايتين مية") || lower.contains("كوباية ماء")
+            arabicWater
+            || lower.contains("water") || lower.contains("hydration")
+            || lower.contains("drink water") || lower.contains("drinking water")
             || (lower == "ازازة" || lower == "زجاجة" || lower == "كوباية" || lower == "كوبايتين")
         )
 
@@ -454,10 +457,7 @@ final class FoodNutritionDatabase {
                 extractedAmount = 250
             }
 
-            let displayTitle = lower.contains("مية") || lower.contains("ماء") || lower.contains("ماي") || lower.contains("مويه")
-                || lower.contains("ازازة") || lower.contains("كوباية")
-                ? "شرب ماء"
-                : "Water Intake"
+            let displayTitle = arabicWater ? "شرب ماء" : "Water Intake"
             return ParsedNutritionResult(
                 type: .water(amountML: extractedAmount),
                 title: displayTitle,
@@ -466,7 +466,7 @@ final class FoodNutritionDatabase {
                 carbsG: 0,
                 fatG: 0,
                 waterML: extractedAmount,
-                summary: lower.contains("مية") || lower.contains("ماء") || lower.contains("ازازة") || lower.contains("كوباية")
+                summary: arabicWater
                     ? "تم تسجيل \(extractedAmount) مل ماء"
                     : "Logged \(extractedAmount) ml of water"
             )
