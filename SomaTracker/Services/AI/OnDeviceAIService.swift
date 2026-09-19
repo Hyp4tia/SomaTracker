@@ -38,6 +38,15 @@ enum OnDeviceAISettings {
     static var isEnabled: Bool {
         UserDefaults.standard.object(forKey: defaultsKey) as? Bool ?? true
     }
+
+    /// Photos take the cloud route by default. Gemini reads a plate in about two seconds and reads
+    /// it better; the on-device model takes longer and guesses. This switch is for the person who
+    /// would rather the photo never leave the iPhone and accept that trade.
+    static let photosOnDeviceKey = "soma_photos_on_device"
+
+    static var photosOnDevice: Bool {
+        UserDefaults.standard.bool(forKey: photosOnDeviceKey)
+    }
 }
 
 enum AppleServerAISettings {

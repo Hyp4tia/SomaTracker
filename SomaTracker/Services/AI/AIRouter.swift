@@ -55,8 +55,16 @@ final class AIRouter {
         // second opinion, taking over when this device cannot run the model, when the model does not
         // read the language of the log (Arabic today), when a local answer takes too long, or when
         // it fails the numeric consistency checks.
-        let appleEngineCanTry = OnDeviceAISettings.isEnabled
-            && (photos.isEmpty || OnDeviceAIService.supportsImageInput)
+        // Text and voice logs go local first. Photos do not: the cloud reads them faster and more
+        // accurately, so a plate only stays on the iPhone when the user asked for that.
+        let appleEngineCanTry: Bool
+        if photos.isEmpty {
+            appleEngineCanTry = OnDeviceAISettings.isEnabled
+        } else {
+            appleEngineCanTry = OnDeviceAISettings.isEnabled
+                && OnDeviceAISettings.photosOnDevice
+                && OnDeviceAIService.supportsImageInput
+        }
         if appleEngineCanTry {
             do {
                 return try await OnDeviceAIService.shared.analyze(
@@ -89,6 +97,18 @@ final class AIRouter {
                 print("[AIRouter] Gemini AI request error: \(error.localizedDescription). Falling back to on-device engine.")
                 // Fall back to on-device nutritional engine seamlessly
             }
+        }
+
+        // The cloud did not answer. A photo still gets a real reading when this iPhone can produce
+        // one, which is what makes a photo log work with no signal at all.
+        if !photos.isEmpty, OnDeviceAISettings.isEnabled, OnDeviceAIService.supportsImageInput,
+           let local = try? await OnDeviceAIService.shared.analyze(
+                userNotes: !combinedText.isEmpty ? combinedText : notes,
+                photoDataList: photos,
+                voiceTranscription: effectiveVoice,
+                alternativeTranscriptions: alternativeTranscriptions
+           ) {
+            return local.attributed(to: .onDeviceFallback)
         }
 
         // Reaching here after a configured cloud attempt means the call failed, so the result is a

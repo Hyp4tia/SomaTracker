@@ -12,6 +12,7 @@ struct AISettingsDetailView: View {
     @State private var showPaywall = false
     @AppStorage(OnDeviceAISettings.defaultsKey) private var onDeviceAI = true
     @AppStorage(AIFactCheckService.defaultsKey) private var factCheck = true
+    @AppStorage(OnDeviceAISettings.photosOnDeviceKey) private var photosOnDevice = false
 
     var body: some View {
         List {
@@ -130,6 +131,35 @@ struct AISettingsDetailView: View {
                     .padding(.vertical, 3)
                 }
                 .disabled(!OnDeviceAIService.isReady || !onDeviceAI)
+
+                if OnDeviceAIService.isReady, OnDeviceAIService.supportsImageInput, onDeviceAI {
+                    Toggle(isOn: $photosOnDevice) {
+                        HStack(spacing: 14) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(SomaColors.iris)
+                                    .frame(width: 32, height: 32)
+
+                                Image(systemName: "photo.badge.checkmark")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.white)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Keep meal photos on this iPhone")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(Color(.label))
+
+                                Text(photosOnDevice
+                                     ? "Photos are read on-device and never uploaded. Slower, and no cloud review"
+                                     : "Off, photos go to the cloud, which reads them faster and better")
+                                    .font(.system(size: 13))
+                                    .foregroundStyle(Color(.secondaryLabel))
+                            }
+                        }
+                        .padding(.vertical, 3)
+                    }
+                }
             } header: {
                 Text("ANALYSIS ENGINE")
             } footer: {
