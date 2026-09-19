@@ -33,7 +33,9 @@ struct SomaChatSurface: View {
     /// over a chat the user had already closed.
     @State private var pendingFocus: Task<Void, Never>?
 
-    @FocusState private var isComposerFocused: Bool
+    /// Whether the keyboard belongs to the composer right now. The UIKit field enforces this, which is
+    /// what makes the keyboard survive a send.
+    @State private var composerActive = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -63,6 +65,8 @@ struct SomaChatSurface: View {
             guard let image else { return }
             session.attach(image: image)
             capturedImage = nil
+            // The camera took the screen, so the conversation takes the keyboard back.
+            composerActive = true
         }
         .sheet(isPresented: $session.needsPaywall) {
             SomaPaywallView()
@@ -86,6 +90,7 @@ struct SomaChatSurface: View {
             // A safety net for an exit that did not run the collapse path, so the bar can never be left
             // hidden by this surface.
             pendingFocus?.cancel()
+            composerActive = false
             dragOffset = 0
             TabBarCoordinator.setTabBarVisible(true)
         }
@@ -95,6 +100,10 @@ struct SomaChatSurface: View {
         }
         .onChange(of: session.messages.count) { _, _ in
             refreshDaySummary()
+        }
+        .onChange(of: session.pendingPhotos.count) { _, _ in
+            // Coming back from the photo library, the chat is ready to be typed in again.
+            composerActive = true
         }
         .alert("Microphone Access Required", isPresented: $showMicAlert) {
             Button("Open Settings") {
@@ -120,7 +129,7 @@ struct SomaChatSurface: View {
         pendingFocus = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 500_000_000)
             guard !Task.isCancelled, isExpanded else { return }
-            isComposerFocused = true
+            composerActive = true
         }
     }
 
@@ -300,17 +309,20 @@ struct SomaChatSurface: View {
             HStack(spacing: 10) {
                 attachMenu
 
-                // A raised rounded field, the shape every other input in Soma uses. The bare text field
-                // this replaces was the one place the chat looked like it had been bolted on.
-                TextField(placeholder, text: $session.input)
-                    .font(.system(size: 15))
-                    .focused($isComposerFocused)
-                    .submitLabel(.send)
-                    .onSubmit { send() }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                // A raised rounded field, the shape every other input in Soma uses, backed by UIKit so
+                // the return key sends without giving up the keyboard.
+                SomaComposerField(
+                    text: $session.input,
+                    placeholder: placeholder,
+                    wantsFocus: composerActive,
+                    onSend: { send() },
+                    onFocusChange: { focused in composerActive = focused }
+                )
+                .frame(minHeight: 22)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 trailingButton
             }
@@ -498,7 +510,7 @@ struct SomaChatSurface: View {
         guard !session.isThinking else { return }
         // The keyboard's timer must not fire over a recording that is already running.
         pendingFocus?.cancel()
-        isComposerFocused = false
+        composerActive = false
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         guard speech.startLiveTranscription() else {
             showMicAlert = true
@@ -524,7 +536,7 @@ struct SomaChatSurface: View {
 
     private func collapse() {
         pendingFocus?.cancel()
-        isComposerFocused = false
+        composerActive = false
         withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
             isExpanded = false
         }
