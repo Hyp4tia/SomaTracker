@@ -44,6 +44,8 @@ final class GeminiAIService: AIServiceProtocol {
             alternativeTranscriptions: alternativeTranscriptions,
             photoCount: photoDataList.count
         )
+        // The answer's language is the user's choice, never a guess from the input.
+        let outputLanguage = SpeechLanguage.resolved()
         parts.append(["text": combinedPrompt])
 
         // 2. Multimodal Photos (up to 5, base64 encoded)
@@ -69,7 +71,7 @@ final class GeminiAIService: AIServiceProtocol {
         }
 
         // Shared with the on-device engine so the two cannot describe different nutritionists.
-        let systemInstruction = SomaAIPrompts.cloudSystemInstruction
+        let systemInstruction = SomaAIPrompts.cloudSystemInstruction(outputLanguage: outputLanguage)
 
         guard let payloadData = try? await generateJSON(systemInstruction: systemInstruction, parts: parts) else {
             throw NSError(domain: "GeminiAIService", code: 500, userInfo: [NSLocalizedDescriptionKey: "All Gemini AI model endpoints failed."])
@@ -212,7 +214,7 @@ final class GeminiAIService: AIServiceProtocol {
         }
 
         let payload = try await generateJSON(
-            systemInstruction: SomaAIPrompts.reviewInstruction,
+            systemInstruction: SomaAIPrompts.reviewInstruction(outputLanguage: SpeechLanguage.resolved()),
             parts: [["text": SomaAIPrompts.reviewPrompt(description: description, estimate: estimate)]]
         )
         return try JSONDecoder().decode(AIMealReview.self, from: payload)

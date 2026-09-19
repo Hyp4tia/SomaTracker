@@ -33,6 +33,33 @@ enum SpeechLanguage: String, CaseIterable, Identifiable {
     }
 }
 
+extension SpeechLanguage {
+    static let storedKey = "soma_speech_language"
+
+    /// The language this user logs in. Read from the same stored preference the recognizer uses, so
+    /// the toggle the user picked and the language the engines answer in cannot disagree.
+    static func resolved(for defaults: UserDefaults = .standard) -> SpeechLanguage {
+        if let saved = defaults.string(forKey: storedKey), let stored = SpeechLanguage(rawValue: saved) {
+            return stored
+        }
+        // An untouched install follows the device: Arabic on an Arabic or Egyptian one, English
+        // otherwise. The recognizer picks the same default, which is why this lives here.
+        let preferred = Locale.preferredLanguages
+        let arabicDevice = preferred.contains { $0.hasPrefix("ar") }
+            || Locale.current.identifier.hasPrefix("ar")
+            || Locale.current.region?.identifier == "EG"
+        return arabicDevice ? .arabic : .english
+    }
+
+    /// How the prompts name this language when they tell an engine what to write in.
+    var analysisLanguageName: String {
+        switch self {
+        case .arabic: return "Arabic"
+        case .english: return "English"
+        }
+    }
+}
+
 @Observable
 final class SpeechRecognitionService: NSObject, AVAudioRecorderDelegate {
     var isRecordingLive = false
@@ -46,7 +73,7 @@ final class SpeechRecognitionService: NSObject, AVAudioRecorderDelegate {
     /// User-selected or auto-detected speech language (persisted across sessions)
     var selectedLanguage: SpeechLanguage {
         didSet {
-            UserDefaults.standard.set(selectedLanguage.rawValue, forKey: "soma_speech_language")
+            UserDefaults.standard.set(selectedLanguage.rawValue, forKey: SpeechLanguage.storedKey)
         }
     }
 
@@ -65,17 +92,7 @@ final class SpeechRecognitionService: NSObject, AVAudioRecorderDelegate {
     private var animationPhase: Double = 0
 
     override init() {
-        if let saved = UserDefaults.standard.string(forKey: "soma_speech_language"),
-           let lang = SpeechLanguage(rawValue: saved) {
-            self.selectedLanguage = lang
-        } else {
-            let preferred = Locale.preferredLanguages
-            let hasArabic = preferred.contains(where: { $0.hasPrefix("ar") }) ||
-                            Locale.current.identifier.hasPrefix("ar") ||
-                            Locale.current.region?.identifier == "EG" ||
-                            Locale.current.identifier.contains("EG")
-            self.selectedLanguage = hasArabic ? .arabic : .english
-        }
+        self.selectedLanguage = SpeechLanguage.resolved()
         super.init()
     }
 

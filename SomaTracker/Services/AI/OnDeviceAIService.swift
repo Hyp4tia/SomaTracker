@@ -207,7 +207,7 @@ final class OnDeviceAIService: AIServiceProtocol {
             alternativeTranscriptions: alternativeTranscriptions,
             photoCount: photoData.count
         )
-        let instructions = SomaAIPrompts.onDeviceSystemInstruction
+        let instructions = SomaAIPrompts.onDeviceSystemInstruction(outputLanguage: SpeechLanguage.resolved())
         let budget = photoData.isEmpty ? textDeadline : imageDeadline
 
         do {
@@ -312,7 +312,7 @@ final class OnDeviceAIService: AIServiceProtocol {
         let model = PrivateCloudComputeLanguageModel()
         guard model.isAvailable, !model.quotaUsage.isLimitReached else { return nil }
 
-        let instructions = SomaAIPrompts.onDeviceSystemInstruction
+        let instructions = SomaAIPrompts.onDeviceSystemInstruction(outputLanguage: SpeechLanguage.resolved())
         let images = photoData
         let deadline = serverDeadline
 
