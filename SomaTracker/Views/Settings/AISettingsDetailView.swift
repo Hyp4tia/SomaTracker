@@ -13,6 +13,7 @@ struct AISettingsDetailView: View {
     /// Empty until the user picks, so an install from before this screen keeps its old behaviour.
     @AppStorage(OnDeviceAISettings.modeKey) private var storedModeRaw = ""
     @AppStorage(OnDeviceAISettings.photosOnDeviceKey) private var photosOnDevice = false
+    @AppStorage(SomaChatSettings.surfaceKey) private var chatSurface = true
 
     var body: some View {
         List {
@@ -181,7 +182,41 @@ struct AISettingsDetailView: View {
                 Text("Works directly through Siri, Shortcuts, and the iPhone Action Button.")
             }
 
-            // Section 3: the phrases Soma actually registers, so this screen cannot promise something
+            // Section 3: the conversation surface, with the plain bar as the fallback
+            Section {
+                Toggle(isOn: $chatSurface) {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(SomaColors.navy)
+                                .frame(width: 32, height: 32)
+
+                            Image(systemName: "bubble.left.and.text.bubble.right.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Conversational Soma")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color(.label))
+
+                            Text(chatSurface
+                                 ? "The log bar expands into a full-screen chat"
+                                 : "Off, the AI tab uses the plain log bar")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+                    }
+                    .padding(.vertical, 3)
+                }
+            } header: {
+                Text("CONVERSATION")
+            } footer: {
+                Text("Tap the bar above the journal to talk to Soma: type, send photos, or record a voice log. Switching this off restores the plain bar.")
+            }
+
+            // Section 4: the phrases Soma actually registers, so this screen cannot promise something
             // Siri will not answer. They mirror SomaShortcuts.
             Section {
                 ForEach(Self.siriPhrases, id: \.self) { phrase in

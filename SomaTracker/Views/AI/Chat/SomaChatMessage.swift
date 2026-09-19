@@ -1,0 +1,93 @@
+//
+//  SomaChatMessage.swift
+//  SomaTracker
+//
+//  One turn in the conversation. Plain values only, so a bubble renders without touching SwiftData.
+//
+
+import Foundation
+
+struct SomaChatMessage: Identifiable {
+    enum Author {
+        case user, soma
+    }
+
+    enum Kind {
+        /// What the user sent.
+        case user
+        /// Soma's reply carrying macros: the result of a log.
+        case analysis
+        /// Soma's written reply: a status answer or advice.
+        case answer
+        /// Something went wrong, said plainly rather than logging a guess.
+        case notice
+    }
+
+    let id = UUID()
+    let kind: Kind
+    let author: Author
+    let timestamp = Date()
+
+    var text = ""
+    var photos: [Data] = []
+    var voiceRelativePath: String?
+    var voiceDuration: TimeInterval = 0
+
+    var title = ""
+    var location = ""
+    var calories = 0
+    var proteinG: Double = 0
+    var carbsG: Double = 0
+    var fatG: Double = 0
+    var waterML = 0
+
+    /// The journal entry this reply created, so a later correction or deletion can find it.
+    var linkedEntryID: UUID?
+
+    static func user(text: String, photos: [Data] = [], voiceRelativePath: String? = nil, voiceDuration: TimeInterval = 0) -> SomaChatMessage {
+        SomaChatMessage(
+            kind: .user,
+            author: .user,
+            text: text,
+            photos: photos,
+            voiceRelativePath: voiceRelativePath,
+            voiceDuration: voiceDuration
+        )
+    }
+
+    static func analysis(_ analysis: AIMealAnalysisResult, linkedEntryID: UUID?) -> SomaChatMessage {
+        SomaChatMessage(
+            kind: .analysis,
+            author: .soma,
+            text: analysis.storyNarrative,
+            title: analysis.title,
+            location: analysis.location,
+            calories: analysis.calories,
+            proteinG: analysis.proteinG,
+            carbsG: analysis.carbsG,
+            fatG: analysis.fatG,
+            waterML: analysis.waterML,
+            linkedEntryID: linkedEntryID
+        )
+    }
+
+    static func hydration(_ entry: AIMealEntry) -> SomaChatMessage {
+        SomaChatMessage(
+            kind: .analysis,
+            author: .soma,
+            text: entry.storyText,
+            title: entry.title,
+            location: entry.location,
+            waterML: entry.waterML,
+            linkedEntryID: entry.id
+        )
+    }
+
+    static func answer(_ text: String) -> SomaChatMessage {
+        SomaChatMessage(kind: .answer, author: .soma, text: text)
+    }
+
+    static func notice(_ text: String) -> SomaChatMessage {
+        SomaChatMessage(kind: .notice, author: .soma, text: text)
+    }
+}

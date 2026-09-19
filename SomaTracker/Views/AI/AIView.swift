@@ -40,6 +40,12 @@ struct AIView: View {
     @State private var showPaywall = false
     @State private var lastQuickActionDate: Date = .distantPast
 
+    /// The conversation surface. Off returns this screen to exactly what it was: the overlay never
+    /// mounts and the launcher bar is replaced by the plain input bar below.
+    @AppStorage(SomaChatSettings.surfaceKey) private var chatSurfaceEnabled = true
+    @State private var isChatExpanded = false
+    @State private var chatSession = SomaChatSession()
+
     var body: some View {
         ZStack(alignment: .top) {
             Color(.systemGroupedBackground)
@@ -54,7 +60,11 @@ struct AIView: View {
 
                         voiceMemosRecorderCard
 
-                        quickTextInputBar
+                        if chatSurfaceEnabled {
+                            SomaChatLauncher(session: chatSession, isExpanded: $isChatExpanded)
+                        } else {
+                            quickTextInputBar
+                        }
                     }
                     .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 8, trailing: 18))
                     .listRowSeparator(.hidden)
@@ -146,6 +156,19 @@ struct AIView: View {
                 toastBanner(message: message)
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .zIndex(100)
+            }
+
+            // The conversation surface rises over the tab, above the toast so a confirmation stays
+            // visible while it is open.
+            if chatSurfaceEnabled, isChatExpanded {
+                Color.black.opacity(0.10)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .zIndex(100.5)
+
+                SomaChatSurface(session: chatSession, isExpanded: $isChatExpanded)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(101)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -1096,17 +1119,7 @@ struct AIView: View {
     /// Gemini does not need a 12 MP plate. Shrinking to 1024 px keeps the base64 payload
     /// (built on the main actor) roughly ten times smaller.
     private func downscaledJPEGData(from image: UIImage, maxDimension: CGFloat = 1_024, quality: CGFloat = 0.82) -> Data? {
-        let longestSide = max(image.size.width, image.size.height)
-        guard longestSide > maxDimension else {
-            return image.jpegData(compressionQuality: quality)
-        }
-
-        let scale = maxDimension / longestSide
-        let targetSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-        let resized = UIGraphicsImageRenderer(size: targetSize).image { _ in
-            image.draw(in: CGRect(origin: .zero, size: targetSize))
-        }
-        return resized.jpegData(compressionQuality: quality)
+        SomaImage.jpeg(from: image, maxDimension: maxDimension, quality: quality)
     }
 
     private func showToast(_ message: String) {
@@ -1290,7 +1303,7 @@ private struct BouncingDotsView: View {
     }
 }
 
-private struct ShimmerProgressBar: View {
+struct ShimmerProgressBar: View {
     @State private var shimmerPhase: CGFloat = -1.0
 
     var body: some View {
