@@ -34,18 +34,6 @@ final class GeminiAIService: AIServiceProtocol {
             throw NSError(domain: "GeminiAIService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Neither Gemini proxy endpoint nor API key is configured."])
         }
 
-        // Measured against the live proxy: full Flash models burn 500-900 thinking tokens and
-        // answer in 5-15s, or return 503 while Google sheds load, while Flash-Lite answers a
-        // photo or a text meal in about 1.5s and never thinks at all. Lite is also the only
-        // family that rejects thinkingConfig (HTTP 400), so this cascade stays Lite-only and
-        // deliberately sends none. Pinned name first for consistent speed, `-latest` second so a
-        // version bump cannot break logging, and nothing after that: each extra miss is a full
-        // round trip the user waits through before the on-device engine takes over.
-        let candidateModels = [
-            "gemini-3.5-flash-lite",
-            "gemini-flash-lite-latest",
-        ]
-
         var parts: [[String: Any]] = []
 
         // 1. Text description & user query, built by the shared prompt source so the cloud and the
@@ -82,6 +70,30 @@ final class GeminiAIService: AIServiceProtocol {
 
         // Shared with the on-device engine so the two cannot describe different nutritionists.
         let systemInstruction = SomaAIPrompts.cloudSystemInstruction
+
+        guard let payloadData = try? await generateJSON(systemInstruction: systemInstruction, parts: parts) else {
+            throw NSError(domain: "GeminiAIService", code: 500, userInfo: [NSLocalizedDescriptionKey: "All Gemini AI model endpoints failed."])
+        }
+        return try JSONDecoder().decode(AIMealAnalysisResult.self, from: payloadData)
+    }
+
+    // MARK: - Transport
+
+    /// The model cascade: returns the response's JSON payload as data. Shared by the analysis prompt
+    /// and the review prompt so both get the same endpoints, headers, timeout and retry behaviour,
+    /// and so a change to the routing or the timeout can never apply to only one of them.
+    private func generateJSON(systemInstruction: String, parts: [[String: Any]]) async throws -> Data {
+        // Measured against the live proxy: full Flash models burn 500-900 thinking tokens and
+        // answer in 5-15s, or return 503 while Google sheds load, while Flash-Lite answers a
+        // photo or a text meal in about 1.5s and never thinks at all. Lite is also the only
+        // family that rejects thinkingConfig (HTTP 400), so this cascade stays Lite-only and
+        // deliberately sends none. Pinned name first for consistent speed, `-latest` second so a
+        // version bump cannot break logging, and nothing after that: each extra miss is a full
+        // round trip the user waits through before the on-device engine takes over.
+        let candidateModels = [
+            "gemini-3.5-flash-lite",
+            "gemini-flash-lite-latest",
+        ]
 
         let requestBody: [String: Any] = [
             "system_instruction": [
@@ -133,55 +145,17 @@ final class GeminiAIService: AIServiceProtocol {
                     continue
                 }
 
-                // Parse Gemini Response JSON
-                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-                guard let candidates = json?["candidates"] as? [[String: Any]],
+                guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let candidates = json["candidates"] as? [[String: Any]],
                       let firstCandidate = candidates.first,
                       let content = firstCandidate["content"] as? [String: Any],
                       let responseParts = content["parts"] as? [[String: Any]],
-                      let textPayload = responseParts.first?["text"] as? String else {
+                      let textPayload = responseParts.first?["text"] as? String,
+                      let payloadData = GeminiAIService.jsonPayload(from: textPayload) else {
                     continue
                 }
 
-                // Clean any code block fences (e.g. ```json ... ```)
-                var cleanedText = textPayload.trimmingCharacters(in: .whitespacesAndNewlines)
-                if cleanedText.hasPrefix("```json") {
-                    cleanedText = String(cleanedText.dropFirst(7))
-                } else if cleanedText.hasPrefix("```") {
-                    cleanedText = String(cleanedText.dropFirst(3))
-                }
-                if cleanedText.hasSuffix("```") {
-                    cleanedText = String(cleanedText.dropLast(3))
-                }
-                cleanedText = cleanedText.trimmingCharacters(in: .whitespacesAndNewlines)
-
-                // Extract balanced JSON object from first '{' to its matching '}' to remove any trailing LLM quirks
-                if let firstOpen = cleanedText.firstIndex(of: "{") {
-                    var depth = 0
-                    var lastClose: String.Index? = nil
-                    for index in cleanedText[firstOpen...].indices {
-                        let ch = cleanedText[index]
-                        if ch == "{" {
-                            depth += 1
-                        } else if ch == "}" {
-                            depth -= 1
-                            if depth == 0 {
-                                lastClose = index
-                                break
-                            }
-                        }
-                    }
-                    if let lastClose = lastClose {
-                        cleanedText = String(cleanedText[firstOpen...lastClose])
-                    }
-                }
-
-                guard let payloadData = cleanedText.data(using: .utf8) else {
-                    continue
-                }
-
-                let decodedResult = try JSONDecoder().decode(AIMealAnalysisResult.self, from: payloadData)
-                return decodedResult
+                return payloadData
             } catch {
                 print("[GeminiAIService] Failed with model \(modelName): \(error.localizedDescription)")
                 lastError = error
@@ -190,5 +164,57 @@ final class GeminiAIService: AIServiceProtocol {
         }
 
         throw lastError ?? NSError(domain: "GeminiAIService", code: 500, userInfo: [NSLocalizedDescriptionKey: "All Gemini AI model endpoints failed."])
+    }
+
+    /// Strips code fences and any prose around the JSON object, then returns it as data.
+    private static func jsonPayload(from text: String) -> Data? {
+        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleaned.hasPrefix("```json") {
+            cleaned = String(cleaned.dropFirst(7))
+        } else if cleaned.hasPrefix("```") {
+            cleaned = String(cleaned.dropFirst(3))
+        }
+        if cleaned.hasSuffix("```") {
+            cleaned = String(cleaned.dropLast(3))
+        }
+        cleaned = cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let firstOpen = cleaned.firstIndex(of: "{") {
+            var depth = 0
+            var lastClose: String.Index? = nil
+            for index in cleaned[firstOpen...].indices {
+                let ch = cleaned[index]
+                if ch == "{" {
+                    depth += 1
+                } else if ch == "}" {
+                    depth -= 1
+                    if depth == 0 {
+                        lastClose = index
+                        break
+                    }
+                }
+            }
+            if let lastClose {
+                cleaned = String(cleaned[firstOpen...lastClose])
+            }
+        }
+
+        return cleaned.data(using: .utf8)
+    }
+
+    // MARK: - Review
+
+    /// Fact-checks an estimate that another engine produced. The cloud is the second opinion for
+    /// everything Siri answers, so a wrong on-device estimate gets corrected rather than shipped.
+    func review(description: String, estimate: AIMealAnalysisResult) async throws -> AIMealReview {
+        guard !proxyEndpoint.isEmpty || !apiKey.isEmpty else {
+            throw NSError(domain: "GeminiAIService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Neither Gemini proxy endpoint nor API key is configured."])
+        }
+
+        let payload = try await generateJSON(
+            systemInstruction: SomaAIPrompts.reviewInstruction,
+            parts: [["text": SomaAIPrompts.reviewPrompt(description: description, estimate: estimate)]]
+        )
+        return try JSONDecoder().decode(AIMealReview.self, from: payload)
     }
 }

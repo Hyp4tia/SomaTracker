@@ -67,6 +67,44 @@ struct AIFoodItemBreakdown: Codable, Identifiable {
     }
 }
 
+/// The cloud's verdict on an estimate another engine produced. `agrees` drives the correction;
+/// the numbers ride along either way, so a disagreement can be applied without a second call.
+/// Decoded only, never encoded: the alias keys for the snake_case variants would make a synthesized
+/// encoder impossible, and nothing writes a review back out.
+struct AIMealReview: Decodable {
+    let calories: Int
+    let proteinG: Double
+    let carbsG: Double
+    let fatG: Double
+    let reason: String
+
+    enum CodingKeys: String, CodingKey {
+        case calories, proteinG, carbsG, fatG, reason
+        case protein_g, carbs_g, fat_g
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.calories = (try? container.decode(Int.self, forKey: .calories)) ?? 0
+        self.proteinG = AIMealReview.value(from: container, .proteinG, .protein_g)
+        self.carbsG = AIMealReview.value(from: container, .carbsG, .carbs_g)
+        self.fatG = AIMealReview.value(from: container, .fatG, .fat_g)
+        self.reason = (try? container.decode(String.self, forKey: .reason)) ?? ""
+    }
+
+    private static func value(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        _ primary: CodingKeys,
+        _ secondary: CodingKeys
+    ) -> Double {
+        if let d = try? container.decode(Double.self, forKey: primary) { return d }
+        if let d = try? container.decode(Double.self, forKey: secondary) { return d }
+        if let i = try? container.decode(Int.self, forKey: primary) { return Double(i) }
+        if let i = try? container.decode(Int.self, forKey: secondary) { return Double(i) }
+        return 0
+    }
+}
+
 struct AIMealAnalysisResult: Codable {
     /// Which engine produced this analysis. Not part of the wire format: it is set locally so the
     /// UI can tell "Soma AI could not be reached" apart from "the AI found no food here".

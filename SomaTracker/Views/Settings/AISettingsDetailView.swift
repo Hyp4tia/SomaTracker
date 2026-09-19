@@ -11,6 +11,7 @@ struct AISettingsDetailView: View {
     @State private var subscriptionManager = SubscriptionManager.shared
     @State private var showPaywall = false
     @AppStorage(OnDeviceAISettings.defaultsKey) private var onDeviceAI = true
+    @AppStorage(AIFactCheckService.defaultsKey) private var factCheck = true
 
     var body: some View {
         List {
@@ -103,6 +104,32 @@ struct AISettingsDetailView: View {
                     .padding(.vertical, 3)
                 }
                 .disabled(!OnDeviceAIService.isReady)
+
+                Toggle(isOn: $factCheck) {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(SomaColors.emerald)
+                                .frame(width: 32, height: 32)
+
+                            Image(systemName: "checkmark.shield.fill")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Fact-check with the cloud")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color(.label))
+
+                            Text(factCheckStatusText)
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+                    }
+                    .padding(.vertical, 3)
+                }
+                .disabled(!OnDeviceAIService.isReady || !onDeviceAI)
             } header: {
                 Text("ANALYSIS ENGINE")
             } footer: {
@@ -165,6 +192,13 @@ struct AISettingsDetailView: View {
         .sheet(isPresented: $showPaywall) {
             SomaPaywallView()
         }
+    }
+
+    private var factCheckStatusText: String {
+        guard onDeviceAI else { return "Paused while on-device analysis is off" }
+        return factCheck
+            ? "Every on-device answer is verified after it is logged"
+            : "Off, on-device answers are final"
     }
 
     private var engineStatusText: String {

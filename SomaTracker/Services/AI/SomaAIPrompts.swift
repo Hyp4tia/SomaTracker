@@ -75,6 +75,37 @@ enum SomaAIPrompts {
         nutritionRules
     }
 
+    /// The fact-checker's instructions: the same nutritionist, one narrower job, judging an
+    /// estimate that already exists rather than producing one from scratch.
+    static let reviewInstruction = """
+    You are Soma AI, estimating a meal so your numbers can be compared against an on-device estimate.
+    Estimate the meal yourself, from scratch, applying your usual standards: regional portion sizes,
+    hidden cooking oils, ghee and sauces for Egyptian and takeout food, printed nutrition panels on
+    packaged drinks, and mathematical consistency (calories ≈ protein x 4 + carbs x 4 + fat x 9).
+    Judge the portion as an average adult portion unless the description says otherwise.
+    Your numbers MUST describe the meal in the description. The numbers in the schema below are
+    placeholders showing the format only: never repeat them as your answer.
+    Return ONLY valid JSON matching this schema:
+    {
+      "calories": 650,
+      "proteinG": 18.0,
+      "carbsG": 115.0,
+      "fatG": 12.0,
+      "reason": "One short sentence naming what drove your number"
+    }
+    """
+
+    /// What the reviewer is shown: the original words plus the estimate under review.
+    static func reviewPrompt(description: String, estimate: AIMealAnalysisResult) -> String {
+        """
+        Meal description: "\(description)"
+
+        The on-device estimate was: \(estimate.title), \(estimate.calories) kcal, \(Int(estimate.proteinG.rounded()))g protein, \(Int(estimate.carbsG.rounded()))g carbs, \(Int(estimate.fatG.rounded()))g fat.
+
+        Fact-check it.
+        """
+    }
+
     /// The per-request description, identical for both engines so the same words reach either one.
     static func mealPrompt(
         notes: String?,

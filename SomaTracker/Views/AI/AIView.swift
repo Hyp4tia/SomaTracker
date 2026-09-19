@@ -730,6 +730,17 @@ struct AIView: View {
                     } else {
                         showToast("Logged \(analysis.title) · Free trial completed")
                     }
+
+                    // The cloud reviews every on-device answer, after the fact so nothing waits.
+                    Task {
+                        await AIFactCheckService.review(
+                            input: trimmedSpeech,
+                            analysis: analysis,
+                            foodEntry: foodEntry,
+                            aiEntry: aiEntry,
+                            context: modelContext
+                        )
+                    }
                 }
             }
 
@@ -890,6 +901,17 @@ struct AIView: View {
                     showToast("Logged \(analysis.title) · \(subscriptionManager.remainingFreeScans) free logs left")
                 } else {
                     showToast("Logged \(analysis.title) · Free trial completed")
+                }
+
+                // The cloud reviews every on-device answer, after the fact so nothing waits.
+                Task {
+                    await AIFactCheckService.review(
+                        input: query,
+                        analysis: analysis,
+                        foodEntry: foodEntry,
+                        aiEntry: aiEntry,
+                        context: modelContext
+                    )
                 }
             }
         }
