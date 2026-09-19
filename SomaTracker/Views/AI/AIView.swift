@@ -219,6 +219,11 @@ struct AIView: View {
             guard let image = newImage else { return }
             handleCapturedPhoto(image)
         }
+        .onChange(of: isChatExpanded) { _, expanded in
+            // The bar leaves and returns with the conversation, on the same 0.12s fade the navigation
+            // path uses, rather than waiting for the surface's transition to finish.
+            TabBarCoordinator.setTabBarVisible(!expanded)
+        }
         .onReceive(NotificationCenter.default.publisher(for: .somaTriggerQuickAction)) { notif in
             if let action = notif.object as? AIQuickAction {
                 AppNavigationState.shared.pendingQuickAction = nil

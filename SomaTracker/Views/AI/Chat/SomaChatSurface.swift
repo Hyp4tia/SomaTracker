@@ -56,6 +56,11 @@ struct SomaChatSurface: View {
         .sheet(isPresented: $session.needsPaywall) {
             SomaPaywallView()
         }
+        .onDisappear {
+            // A safety net for an exit that did not run the collapse path, so the bar can never be left
+            // hidden by this surface.
+            TabBarCoordinator.setTabBarVisible(true)
+        }
         .onAppear {
             // The conversation opens ready to type: asking for the keyboard after the rise animation
             // avoids fighting it for the same frames.
