@@ -321,6 +321,14 @@ struct HistoryView: View {
         let allFoods = currentLogs.flatMap(\.foodEntries).sorted(by: { $0.timestamp < $1.timestamp })
         let foodEntries = allFoods.filter { !Self.isProteinEntry($0) }
         let proteinEntries = allFoods.filter { Self.isProteinEntry($0) }
+
+        // The Protein filter is a lens on everything that contributed protein, not only the
+        // protein-type logs the All view separates out. A meal that carried protein belongs in it:
+        // the filter used to report "no protein logs" for a logged Big Mac while its 25g showed
+        // under Food and counted towards the daily total.
+        let proteinContributors = selectedCategoryFilter == .protein
+            ? allFoods.filter { $0.proteinG > 0 }
+            : proteinEntries
         let waterEntries = currentLogs.flatMap(\.waterEntries).sorted(by: { $0.timestamp < $1.timestamp })
         let stepsCount = daySteps
 
@@ -373,9 +381,9 @@ struct HistoryView: View {
         }
 
         // 2. Protein Section
-        if (selectedCategoryFilter == .all || selectedCategoryFilter == .protein) && !proteinEntries.isEmpty {
+        if (selectedCategoryFilter == .all || selectedCategoryFilter == .protein) && !proteinContributors.isEmpty {
             Section {
-                ForEach(proteinEntries) { entry in
+                ForEach(proteinContributors) { entry in
                     proteinRow(entry)
                         .listRowInsets(EdgeInsets(top: 2, leading: 20, bottom: 2, trailing: 20))
                         .listRowSeparator(.visible, edges: .bottom)
@@ -409,9 +417,11 @@ struct HistoryView: View {
                         }
                 }
             } header: {
-                sectionHeader("Protein")
+                // In the Protein lens the header carries the day's total, so the number the hero card
+                // shows is accounted for by the rows underneath it.
+                sectionHeader(selectedCategoryFilter == .protein ? "Protein \(dayProtein)g" : "Protein")
             }
-        } else if selectedCategoryFilter == .protein && proteinEntries.isEmpty {
+        } else if selectedCategoryFilter == .protein && proteinContributors.isEmpty {
             Section {
                 emptyCategoryView("No protein logs for this day")
                     .listRowInsets(EdgeInsets(top: 24, leading: 20, bottom: 24, trailing: 20))
