@@ -36,6 +36,12 @@ final class SomaChatSession {
     /// Set when the paywall has to come up. The surface presents it and clears the flag.
     var needsPaywall = false
 
+    struct VoiceAttachment {
+        let relativePath: String?
+        let samples: [Float]
+        let duration: TimeInterval
+    }
+
     private let router = AIRouter.shared
 
     // MARK: - Sending
@@ -53,7 +59,9 @@ final class SomaChatSession {
         input = ""
         pendingPhotos = []
 
-        await analyze(text: text, photos: photos, context: context, subscription: subscription)
+        // An attached photo is the meal itself, whatever the words around it say.
+        let intent: SomaChatIntent = photos.isEmpty ? SomaChatIntentClassifier.classify(text) : .log
+        await handle(intent: intent, text: text, photos: photos, voice: nil, context: context, subscription: subscription)
     }
 
     func sendVoice(
@@ -70,8 +78,66 @@ final class SomaChatSession {
         }
 
         let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let voice = VoiceAttachment(relativePath: audioRelativePath, samples: [], duration: duration)
         messages.append(.user(text: text, voiceRelativePath: audioRelativePath, voiceDuration: duration))
-        await analyze(text: text, photos: [], alternatives: alternatives, context: context, subscription: subscription)
+
+        await handle(
+            intent: SomaChatIntentClassifier.classify(text),
+            text: text,
+            photos: [],
+            voice: voice,
+            context: context,
+            subscription: subscription
+        )
+    }
+
+    private func handle(
+        intent: SomaChatIntent,
+        text: String,
+        photos: [Data],
+        voice: VoiceAttachment?,
+        context: ModelContext,
+        subscription: SubscriptionManager
+    ) async {
+        switch intent {
+        case .status(let metric):
+            // Answered from the log itself: no engine, no cost, and the same words Siri uses.
+            messages.append(.answer(SomaToday(context: context).answer(for: metric)))
+
+        case .streak:
+            messages.append(.answer(SomaToday.streakAnswer(context: context)))
+
+        case .ask:
+            await answerQuestion(text: text, photos: photos)
+
+        case .log:
+            await analyze(text: text, photos: photos, voice: voice, context: context, subscription: subscription)
+        }
+    }
+
+    // MARK: - Answers
+
+    /// A question is answered, never written. The numbers come from the same engine a log would use, but
+    /// the journal only changes if the user taps "Log this".
+    private func answerQuestion(text: String, photos: [Data]) async {
+        isThinking = true
+        thinkingLabel = SpeechLanguage.resolved() == .arabic ? "بفكر" : "Working that out"
+        defer { isThinking = false }
+
+        let analysis = await router.processMultimodalMeal(
+            notes: text,
+            photos: photos,
+            audioURL: nil,
+            directTranscription: nil,
+            alternativeTranscriptions: []
+        )
+
+        if analysis.isNoFood || analysis.title == "No Food Detected" {
+            messages.append(.notice(noFoodMessage))
+            return
+        }
+
+        messages.append(.analysis(analysis, linkedEntryID: nil, isLogged: false))
     }
 
     // MARK: - The log path
@@ -79,7 +145,7 @@ final class SomaChatSession {
     private func analyze(
         text: String,
         photos: [Data],
-        alternatives: [String] = [],
+        voice: VoiceAttachment?,
         context: ModelContext,
         subscription: SubscriptionManager
     ) async {
@@ -87,7 +153,7 @@ final class SomaChatSession {
         if photos.isEmpty {
             let local = FoodNutritionDatabase.shared.parseInput(text)
             if local.isWater {
-                logWater(amountML: local.waterML, story: text, summary: local.summary, photos: [], voice: nil, context: context)
+                logWater(amountML: local.waterML, story: text, summary: local.summary, photos: [], voice: voice, context: context)
                 return
             }
         }
@@ -101,7 +167,7 @@ final class SomaChatSession {
             photos: photos,
             audioURL: nil,
             directTranscription: text.isEmpty ? nil : text,
-            alternativeTranscriptions: alternatives
+            alternativeTranscriptions: []
         )
 
         if analysis.isNoFood || analysis.title == "No Food Detected" {
@@ -115,27 +181,78 @@ final class SomaChatSession {
                 story: text,
                 summary: analysis.storyNarrative.isEmpty ? analysis.title : analysis.storyNarrative,
                 photos: photos,
-                voice: nil,
+                voice: voice,
                 context: context
             )
             return
         }
 
-        guard let written = SomaLogWriter.writeMeal(analysis, photos: photos, mealType: "Soma Chat", context: context) else {
+        guard let written = SomaLogWriter.writeMeal(
+            analysis,
+            photos: photos,
+            voiceRelativePath: voice?.relativePath,
+            voiceWaveformSamples: voice?.samples ?? [],
+            voiceDuration: voice?.duration ?? 0,
+            mealType: "Soma Chat",
+            context: context
+        ) else {
             messages.append(.notice(saveFailedMessage))
             return
         }
 
         subscription.consumeFreeScanIfFreeUser()
-        messages.append(.analysis(analysis, linkedEntryID: written.aiEntry.id))
+        messages.append(.analysis(analysis, linkedEntryID: written.aiEntry.id, isLogged: true))
 
         // The same after-care the tab does: a real location, Health, and the cloud review.
         await finish(written: written, analysis: analysis, input: text, context: context)
     }
 
-    /// Location, Health, and the cloud review, then the bubble catches up with whatever the entry
-    /// ended up saying. A correction the review applies shows here instead of leaving the chat and the
-    /// journal disagreeing.
+    /// Writes an answered question into the journal, on the user's say so.
+    func log(message: SomaChatMessage, context: ModelContext, subscription: SubscriptionManager) async {
+        guard !message.isLogged else { return }
+        guard subscription.canUseAIFeatures else {
+            needsPaywall = true
+            return
+        }
+
+        if message.waterML > 0 {
+            logWater(amountML: message.waterML, story: message.text, summary: message.title, photos: [], voice: nil, context: context)
+            markLogged(message)
+            return
+        }
+
+        let analysis = AIMealAnalysisResult(
+            title: message.title,
+            location: message.location,
+            storyNarrative: message.text,
+            calories: message.calories,
+            proteinG: message.proteinG,
+            carbsG: message.carbsG,
+            fatG: message.fatG,
+            waterML: 0,
+            confidence: 0.9,
+            items: [],
+            engine: message.engine
+        )
+
+        guard let written = SomaLogWriter.writeMeal(analysis, photos: [], mealType: "Soma Chat", context: context) else {
+            messages.append(.notice(saveFailedMessage))
+            return
+        }
+
+        subscription.consumeFreeScanIfFreeUser()
+        markLogged(message, entryID: written.aiEntry.id)
+        await finish(written: written, analysis: analysis, input: message.title, context: context)
+    }
+
+    private func markLogged(_ message: SomaChatMessage, entryID: UUID? = nil) {
+        guard let index = messages.firstIndex(where: { $0.id == message.id }) else { return }
+        messages[index].isLogged = true
+        if let entryID { messages[index].linkedEntryID = entryID }
+    }
+
+    /// Location, Health, and the cloud review, then the bubble catches up with whatever the entry ended
+    /// up saying. A correction shows here instead of leaving the chat and the journal disagreeing.
     private func finish(
         written: SomaLogWriter.Written,
         analysis: AIMealAnalysisResult,
@@ -192,8 +309,8 @@ final class SomaChatSession {
             in: context
         )
 
-        // logHydration inserts but deliberately does not save, so the chat saves it here the way the
-        // AI tab does after its own hydration path.
+        // logHydration inserts but deliberately does not save, so the chat saves it here the way the AI
+        // tab does after its own hydration path.
         do {
             try context.save()
         } catch {
@@ -204,12 +321,6 @@ final class SomaChatSession {
 
         messages.append(.hydration(entry))
         Task { await HealthSyncService.shared.syncDay(DailyLog.fetchOrCreateToday(context: context)) }
-    }
-
-    struct VoiceAttachment {
-        let relativePath: String?
-        let samples: [Float]
-        let duration: TimeInterval
     }
 
     /// Empties the conversation. The journal is untouched, since the logs themselves are the record.
@@ -251,13 +362,13 @@ final class SomaChatSession {
 
     private var noFoodMessage: String {
         SpeechLanguage.resolved() == .arabic
-            ? "لم أجد طعامًا في هذا السجل."
+            ? "مش لاقي أكل في السجل ده."
             : "I couldn't find any food in that."
     }
 
     private var saveFailedMessage: String {
         SpeechLanguage.resolved() == .arabic
-            ? "لم أستطع حفظ هذا السجل. حاول مرة أخرى."
+            ? "مقدرتش أحفظ السجل ده. حاول مرة أخرى."
             : "Soma couldn't save that. Please try again."
     }
 }

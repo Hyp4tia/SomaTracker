@@ -10,6 +10,8 @@ import SwiftUI
 
 struct SomaChatBubble: View {
     let message: SomaChatMessage
+    /// Taps "Log this" on an answered question. Writing it is the user's decision, not the assistant's.
+    var onLog: (() -> Void)?
 
     @State private var player = AudioPlaybackService()
 
@@ -148,9 +150,24 @@ struct SomaChatBubble: View {
                     .foregroundStyle(Color(.secondaryLabel))
             }
 
-            Label("Added to your journal", systemImage: "checkmark.circle.fill")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(SomaColors.emerald)
+            if message.isLogged {
+                Label("Added to your journal", systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(SomaColors.emerald)
+            } else {
+                Button {
+                    onLog?()
+                } label: {
+                    Label("Log this", systemImage: "plus.circle.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background(SomaColors.navy)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
         }
         .padding(14)
         .background(SomaColors.white)

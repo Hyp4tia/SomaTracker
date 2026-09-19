@@ -30,7 +30,9 @@ struct SomaChatSurface: View {
         VStack(spacing: 0) {
             header
             messageList
-            composer
+                // As a bottom inset of the scroll view the composer rides above the keyboard, which is
+                // what a chat is expected to do.
+                .safeAreaInset(edge: .bottom, spacing: 0) { composer }
         }
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         // The surface bleeds to the physical bottom edge while its content stays inside the safe
@@ -53,6 +55,13 @@ struct SomaChatSurface: View {
         }
         .sheet(isPresented: $session.needsPaywall) {
             SomaPaywallView()
+        }
+        .onAppear {
+            // The conversation opens ready to type: asking for the keyboard after the rise animation
+            // avoids fighting it for the same frames.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                isComposerFocused = true
+            }
         }
         .alert("Microphone Access Required", isPresented: $showMicAlert) {
             Button("Open Settings") {
@@ -148,7 +157,11 @@ struct SomaChatSurface: View {
                 if session.messages.isEmpty { emptyState }
 
                 ForEach(session.messages) { message in
-                    SomaChatBubble(message: message)
+                    SomaChatBubble(message: message) {
+                        Task {
+                            await session.log(message: message, context: modelContext, subscription: subscriptionManager)
+                        }
+                    }
                         .transition(.asymmetric(
                             insertion: .move(edge: .bottom).combined(with: .opacity),
                             removal: .opacity
@@ -227,11 +240,11 @@ struct SomaChatSurface: View {
             HStack(spacing: 10) {
                 attachMenu
 
-                TextField(placeholder, text: $session.input, axis: .vertical)
+                TextField(placeholder, text: $session.input)
                     .font(.system(size: 15))
-                    .lineLimit(1...4)
                     .focused($isComposerFocused)
                     .submitLabel(.send)
+                    .onSubmit { send() }
 
                 trailingButton
             }

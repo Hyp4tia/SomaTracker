@@ -44,6 +44,12 @@ struct SomaChatMessage: Identifiable {
     /// The journal entry this reply created, so a later correction or deletion can find it.
     var linkedEntryID: UUID?
 
+    /// True once the numbers are in the journal. An answered question starts false and offers to log.
+    var isLogged = false
+
+    /// Which engine answered, so logging an answered question later still reports the truth.
+    var engine: AIMealAnalysisResult.Engine = .onDevice
+
     static func user(text: String, photos: [Data] = [], voiceRelativePath: String? = nil, voiceDuration: TimeInterval = 0) -> SomaChatMessage {
         SomaChatMessage(
             kind: .user,
@@ -55,7 +61,7 @@ struct SomaChatMessage: Identifiable {
         )
     }
 
-    static func analysis(_ analysis: AIMealAnalysisResult, linkedEntryID: UUID?) -> SomaChatMessage {
+    static func analysis(_ analysis: AIMealAnalysisResult, linkedEntryID: UUID?, isLogged: Bool) -> SomaChatMessage {
         SomaChatMessage(
             kind: .analysis,
             author: .soma,
@@ -67,7 +73,9 @@ struct SomaChatMessage: Identifiable {
             carbsG: analysis.carbsG,
             fatG: analysis.fatG,
             waterML: analysis.waterML,
-            linkedEntryID: linkedEntryID
+            linkedEntryID: linkedEntryID,
+            isLogged: isLogged,
+            engine: analysis.engine
         )
     }
 
@@ -79,7 +87,9 @@ struct SomaChatMessage: Identifiable {
             title: entry.title,
             location: entry.location,
             waterML: entry.waterML,
-            linkedEntryID: entry.id
+            linkedEntryID: entry.id,
+            isLogged: true,
+            engine: .onDevice
         )
     }
 

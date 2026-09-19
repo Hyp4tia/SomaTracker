@@ -36,7 +36,7 @@ enum NutritionMetric: String, AppEnum {
 /// Today's numbers, read through the same models the app writes. Answers are built here rather than
 /// in each intent so a Siri reply and the History screen can never disagree.
 @MainActor
-private struct SomaToday {
+struct SomaToday {
     private let log: DailyLog?
     private let profile: UserProfile?
 
@@ -103,6 +103,20 @@ private struct SomaToday {
         }
     }
 
+    /// The same words the Siri intent answers with, so a spoken answer and a typed one cannot disagree.
+    static func streakAnswer(context: ModelContext) -> String {
+        let logs = (try? context.fetch(FetchDescriptor<DailyLog>())) ?? []
+        let streak = StreakCalculator.calculate(from: logs)
+
+        if streak.currentStreak == 0 {
+            return "No streak yet. Log a meal, some water, or your steps today to start one."
+        }
+        if streak.hasLoggedToday {
+            return "You're on a \(streak.currentStreak) day streak and today is already logged. Your best is \(streak.bestStreak) days."
+        }
+        return "Your streak is \(streak.currentStreak) days. Nothing logged today yet."
+    }
+
     /// The same numbers the spoken answer is built from, so the card and the dialog cannot disagree.
     var daySnippet: SomaDaySnippetView {
         let system = SomaToday.unitSystem
@@ -166,17 +180,9 @@ struct GetStreakStatusIntent: AppIntent {
     @MainActor
     func perform() async throws -> some ProvidesDialog & ReturnsValue<String> & ShowsSnippetView {
         let context = SomaPersistence.shared.mainContext
+        let answer = SomaToday.streakAnswer(context: context)
         let logs = (try? context.fetch(FetchDescriptor<DailyLog>())) ?? []
         let streak = StreakCalculator.calculate(from: logs)
-
-        let answer: String
-        if streak.currentStreak == 0 {
-            answer = "No streak yet. Log a meal, some water, or your steps today to start one."
-        } else if streak.hasLoggedToday {
-            answer = "You're on a \(streak.currentStreak) day streak and today is already logged. Your best is \(streak.bestStreak) days."
-        } else {
-            answer = "Your streak is \(streak.currentStreak) days. Nothing logged today yet."
-        }
 
         return .result(
             value: answer,
