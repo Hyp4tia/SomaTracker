@@ -37,7 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ## [Unreleased] - 2026-09-18d (History protein filter)
 
 ### Fixed
-- **A meal that carried protein reported as no protein in History.** The Protein filter only listed protein-type logs (shakes, "40 protein" entries), so a logged Big Mac said "No protein logs for this day" even though its 25g appeared under Food and counted towards the daily total. The Protein filter now lists every entry that contributed protein, and its header carries the day's total so the rows account for the number on the hero card. The All view and the edit sheet are unchanged: a meal is still a meal, and editing it still edits calories rather than grams.
+- **A meal that carried protein reported as no protein in History.** The Protein filter only listed protein-type logs (shakes, "40 protein" entries), so a logged Big Mac said "No protein logs for this day" even though its 25g appeared under Food and counted towards the daily total. The Protein filter now lists every entry that contributed protein. Its header stays a plain "Protein", since the card above already carries the day's total. The All view and the edit sheet are unchanged: a meal is still a meal, and editing it still edits calories rather than grams.
 
 ---
 
