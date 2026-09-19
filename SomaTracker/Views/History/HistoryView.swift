@@ -417,9 +417,8 @@ struct HistoryView: View {
                         }
                 }
             } header: {
-                // In the Protein lens the header carries the day's total, so the number the hero card
-                // shows is accounted for by the rows underneath it.
-                sectionHeader(selectedCategoryFilter == .protein ? "Protein \(dayProtein)g" : "Protein")
+                // No total here: the PROTEIN card above already carries it, and repeating it was noise.
+                sectionHeader("Protein")
             }
         } else if selectedCategoryFilter == .protein && proteinContributors.isEmpty {
             Section {
