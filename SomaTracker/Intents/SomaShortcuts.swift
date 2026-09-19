@@ -56,6 +56,31 @@ struct SomaShortcuts: AppShortcutsProvider {
         )
 
         AppShortcut(
+            intent: GetDailyNutritionIntent(),
+            phrases: [
+                "Check \(.applicationName)",
+                "Check \(.applicationName) for today",
+                "How much \(\.$metric) do I have left in \(.applicationName)",
+                "How many calories left in \(.applicationName)",
+                "How much water have I had in \(.applicationName)",
+                "How many steps in \(.applicationName)"
+            ],
+            shortTitle: "Check Today",
+            systemImageName: "chart.pie.fill"
+        )
+
+        AppShortcut(
+            intent: GetStreakStatusIntent(),
+            phrases: [
+                "What's my streak in \(.applicationName)",
+                "Check my streak in \(.applicationName)",
+                "How is my streak in \(.applicationName)"
+            ],
+            shortTitle: "Check Streak",
+            systemImageName: "flame.fill"
+        )
+
+        AppShortcut(
             intent: RecordVoiceMealAppIntent(),
             phrases: [
                 "Record voice meal in \(.applicationName)",

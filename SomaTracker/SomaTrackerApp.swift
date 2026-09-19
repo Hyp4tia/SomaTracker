@@ -24,6 +24,15 @@ struct SomaTrackerApp: App {
                     // backgrounded, so the reminders toggle is re-checked on every activation.
                     guard phase == .active else { return }
                     Task { await NotificationManager.shared.refreshPermissionState() }
+                    Task { await SomaSpotlightIndexer.sync(context: sharedModelContainer.mainContext) }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: ModelContext.didSave)) { _ in
+                    // Any log, edit or delete ends here. The sync is idempotent, and the short pause
+                    // lets one log's several writes settle into a single index update.
+                    Task {
+                        try? await Task.sleep(nanoseconds: 1_500_000_000)
+                        await SomaSpotlightIndexer.sync(context: sharedModelContainer.mainContext)
+                    }
                 }
         }
         .modelContainer(sharedModelContainer)
