@@ -32,6 +32,8 @@ struct SomaChatMessage: Identifiable {
     var photos: [Data] = []
     var voiceRelativePath: String?
     var voiceDuration: TimeInterval = 0
+    /// The recording's own samples, so the chat draws the memo rather than a decorative pattern.
+    var voiceWaveformSamples: [Float] = []
 
     var title = ""
     var location = ""
@@ -53,14 +55,21 @@ struct SomaChatMessage: Identifiable {
     /// Pages the answer came from, when the web was searched for it.
     var sources: [SomaWebSource] = []
 
-    static func user(text: String, photos: [Data] = [], voiceRelativePath: String? = nil, voiceDuration: TimeInterval = 0) -> SomaChatMessage {
+    static func user(
+        text: String,
+        photos: [Data] = [],
+        voiceRelativePath: String? = nil,
+        voiceDuration: TimeInterval = 0,
+        voiceWaveformSamples: [Float] = []
+    ) -> SomaChatMessage {
         SomaChatMessage(
             kind: .user,
             author: .user,
             text: text,
             photos: photos,
             voiceRelativePath: voiceRelativePath,
-            voiceDuration: voiceDuration
+            voiceDuration: voiceDuration,
+            voiceWaveformSamples: voiceWaveformSamples
         )
     }
 

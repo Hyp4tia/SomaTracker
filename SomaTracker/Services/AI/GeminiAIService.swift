@@ -92,10 +92,7 @@ final class GeminiAIService: AIServiceProtocol {
         // deliberately sends none. Pinned name first for consistent speed, `-latest` second so a
         // version bump cannot break logging, and nothing after that: each extra miss is a full
         // round trip the user waits through before the on-device engine takes over.
-        let candidateModels = [
-            "gemini-3.5-flash-lite",
-            "gemini-flash-lite-latest",
-        ]
+        let candidateModels = Self.candidateModels
 
         // Built separately: a ternary of two dictionary literals defeats type inference here.
         var generationConfig: [String: Any] = ["temperature": jsonMode ? 0.1 : 0.2]
@@ -117,23 +114,8 @@ final class GeminiAIService: AIServiceProtocol {
 
         var lastError: Error? = nil
         for modelName in candidateModels {
-            let endpoint: String
-            if !proxyEndpoint.isEmpty {
-                endpoint = "\(proxyEndpoint)?model=\(modelName)"
-            } else {
-                endpoint = "https://generativelanguage.googleapis.com/v1beta/models/\(modelName):generateContent?key=\(apiKey)"
-            }
-            guard let url = URL(string: endpoint) else { continue }
-
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            if !proxyEndpoint.isEmpty && !proxyClientSecret.isEmpty {
-                request.setValue(proxyClientSecret, forHTTPHeaderField: "X-Soma-Client-Key")
-            }
-            request.httpBody = requestData
             // Lite replies in about 1.5s, so a stalled attempt must not own the whole scan.
-            request.timeoutInterval = 12
+            guard let request = try? makeRequest(model: modelName, body: requestData, timeout: 12) else { continue }
 
             do {
                 let (data, response) = try await URLSession.shared.data(for: request)
@@ -212,23 +194,44 @@ final class GeminiAIService: AIServiceProtocol {
         return cleaned.data(using: .utf8)
     }
 
+    /// The cascade's model list lives here alone, so the grounded path can never drift from the logging
+    /// path the way a hardcoded name did.
+    private static let candidateModels = [
+        "gemini-3.5-flash-lite",
+        "gemini-flash-lite-latest",
+    ]
+
+    /// One request, built the same way whichever model and body it carries.
+    private func makeRequest(model: String, body: Data, timeout: TimeInterval) throws -> URLRequest {
+        let endpoint = !proxyEndpoint.isEmpty
+            ? "\(proxyEndpoint)?model=\(model)"
+            : "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)"
+        guard let url = URL(string: endpoint) else {
+            throw NSError(domain: "GeminiAIService", code: 400, userInfo: [NSLocalizedDescriptionKey: "Bad endpoint"])
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if !proxyEndpoint.isEmpty && !proxyClientSecret.isEmpty {
+            request.setValue(proxyClientSecret, forHTTPHeaderField: "X-Soma-Client-Key")
+        }
+        request.httpBody = body
+        request.timeoutInterval = timeout
+        return request
+    }
+
     // MARK: - Review
 
     /// Free-text answer for the chat's advice questions. No JSON contract: the reply is the answer.
     ///
     /// Grounding with Google Search is a paid-tier feature on the Gemini 3 family, so a project without
-    /// billing answers 429 for it. That is reported as `usedSearch: false` instead of failing the
-    /// question, and the caller stops asking for search until it might work again.
+    /// billing answers 429 for it. A refused search is thrown rather than retried here without it: the
+    /// advisor owns the cascade, and retrying in this function made one question pay for two calls and
+    /// then record a one-off failure as a day-long outage.
     func answer(systemInstruction: String, question: String, searchGrounding: Bool = false) async throws -> SomaAIAnswer {
         if searchGrounding {
-            do {
-                let grounded = try await groundedAnswer(systemInstruction: systemInstruction, question: question)
-                return grounded
-            } catch {
-                #if DEBUG
-                print("[GeminiAIService] Search grounding unavailable: \(error.localizedDescription)")
-                #endif
-            }
+            return try await groundedAnswer(systemInstruction: systemInstruction, question: question)
         }
 
         let parts: [[String: Any]] = [["text": question]]
@@ -245,31 +248,35 @@ final class GeminiAIService: AIServiceProtocol {
             "generationConfig": ["temperature": 0.2]
         ]
         let data = try JSONSerialization.data(withJSONObject: body)
-        let model = "gemini-3.5-flash-lite"
 
-        let endpoint = !proxyEndpoint.isEmpty
-            ? "\(proxyEndpoint)?model=\(model)"
-            : "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)"
-        guard let url = URL(string: endpoint) else {
-            throw NSError(domain: "GeminiAIService", code: 400, userInfo: [NSLocalizedDescriptionKey: "Bad endpoint"])
+        var responseData = Data()
+        var lastError: Error? = nil
+        var delivered = false
+        for modelName in Self.candidateModels {
+            let request = try makeRequest(model: modelName, body: data, timeout: 20)
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                    let body = String(data: data, encoding: .utf8) ?? ""
+                    throw NSError(
+                        domain: "GeminiAIService",
+                        code: (response as? HTTPURLResponse)?.statusCode ?? 500,
+                        userInfo: [NSLocalizedDescriptionKey: body]
+                    )
+                }
+                responseData = data
+                delivered = true
+                break
+            } catch {
+                lastError = error
+            }
         }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if !proxyEndpoint.isEmpty && !proxyClientSecret.isEmpty {
-            request.setValue(proxyClientSecret, forHTTPHeaderField: "X-Soma-Client-Key")
-        }
-        request.httpBody = data
-        request.timeoutInterval = 20
-
-        let (responseData, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            let body = String(data: responseData, encoding: .utf8) ?? ""
-            throw NSError(
+        guard delivered else {
+            throw lastError ?? NSError(
                 domain: "GeminiAIService",
-                code: (response as? HTTPURLResponse)?.statusCode ?? 500,
-                userInfo: [NSLocalizedDescriptionKey: body]
+                code: 500,
+                userInfo: [NSLocalizedDescriptionKey: "No grounded reply"]
             )
         }
 

@@ -17,8 +17,10 @@ enum SomaChatAdvisor {
     /// Backs the settings switch. Advice still works with search off; it just stops looking outside.
     static let searchKey = "soma_advice_web_search"
 
-    /// When search cannot run, remember it for a day rather than paying for a doomed attempt on every
-    /// question: grounding with Google Search is a paid-tier feature, so an unbilled project refuses it.
+    /// When search cannot run, back off before trying again rather than paying for a doomed attempt on
+    /// every question: grounding with Google Search is a paid-tier feature, so an unbilled project
+    /// refuses it. Six hours, not a day: a single refusal must not cost the user search for the rest of
+    /// the day if it was transient.
     private static let searchRetryKey = "soma_advice_search_retry_after"
 
     static var searchEnabled: Bool {
@@ -32,7 +34,7 @@ enum SomaChatAdvisor {
     }
 
     private static func noteSearchUnavailable() {
-        UserDefaults.standard.set(Date().addingTimeInterval(24 * 3_600), forKey: searchRetryKey)
+        UserDefaults.standard.set(Date().addingTimeInterval(6 * 3_600), forKey: searchRetryKey)
     }
 
     private static func noteSearchWorking() {

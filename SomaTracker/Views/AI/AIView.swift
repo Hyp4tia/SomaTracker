@@ -155,11 +155,12 @@ struct AIView: View {
             if let message = activeToastMessage {
                 toastBanner(message: message)
                     .transition(.move(edge: .top).combined(with: .opacity))
-                    .zIndex(100)
+                    // Above the conversation surface, not below it: at 100 the toast was drawn behind
+                    // the scrim and the surface whenever the chat was open.
+                    .zIndex(102)
             }
 
-            // The conversation surface rises over the tab, above the toast so a confirmation stays
-            // visible while it is open.
+            // The conversation surface rises over the tab, with a scrim between it and the journal.
             if chatSurfaceEnabled, isChatExpanded {
                 Color.black.opacity(0.10)
                     .ignoresSafeArea()
@@ -533,19 +534,14 @@ struct AIView: View {
 
     private func resolveMealLocation(from analysisLocation: String) async -> String {
         let gpsLocation = await LocationService.shared.fetchCurrentLocation()
-        if !analysisLocation.isEmpty && analysisLocation != "Voice Memo" && analysisLocation != "Quick AI Log" && analysisLocation != "Captured with Camera" {
-            if !gpsLocation.isEmpty && !analysisLocation.contains(gpsLocation) {
-                return "\(analysisLocation) · \(gpsLocation)"
+        if let named = SomaLogWriter.realLocation(analysisLocation) {
+            if !gpsLocation.isEmpty && !named.contains(gpsLocation) {
+                return "\(named) · \(gpsLocation)"
             }
-            return analysisLocation
+            return named
         }
         return !gpsLocation.isEmpty ? gpsLocation : "Soma AI Log"
     }
-
-    /// Placeholder values the AI echoes back when it has no real location to report.
-    private static let locationPlaceholders: Set<String> = [
-        "Voice Memo", "Quick AI Log", "Captured with Camera"
-    ]
 
     /// Shown when the cloud call failed and the on-device engine found nothing either: the user
     /// needs to know Soma AI was unreachable, not that their own log was empty.
@@ -560,8 +556,7 @@ struct AIView: View {
     /// Location stored the moment an entry is created: the AI's own when it reported one,
     /// otherwise a neutral label. `patchLocation` swaps in the geocoded value once it resolves.
     private func provisionalLocation(from analysisLocation: String) -> String {
-        let trimmed = analysisLocation.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty || Self.locationPlaceholders.contains(trimmed) ? "Soma AI Log" : trimmed
+        SomaLogWriter.realLocation(analysisLocation) ?? "Soma AI Log"
     }
 
     /// Reverse geocoding is a network round trip, so it runs after the entry is saved and on

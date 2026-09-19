@@ -58,8 +58,11 @@ struct SomaDayContext {
             "- Streak: \(streak) day(s). Today is \(loggedToday ? "already logged" : "not logged yet")"
         ]
 
+        if !todayTitles.isEmpty {
+            lines.append("- Eaten today: \(todayTitles.joined(separator: ", "))")
+        }
         if !recentMeals.isEmpty {
-            lines.append("- Last logged: \(recentMeals.joined(separator: "; "))")
+            lines.append("- Last logged overall: \(recentMeals.joined(separator: "; "))")
         }
         if !favourites.isEmpty {
             lines.append("- Eaten most often in the last 30 days: \(favourites.joined(separator: ", "))")
@@ -93,7 +96,14 @@ struct SomaDayContext {
         )
         let today = (try? context.fetch(todayDescriptor))?.first
 
-        let allLogs = (try? context.fetch(FetchDescriptor<DailyLog>())) ?? []
+        // Bounded: this used to fetch every DailyLog the user has ever had, on every advice question.
+        // 400 days is longer than any streak the calculator can report.
+        let historyStart = calendar.date(byAdding: .day, value: -400, to: startOfDay) ?? startOfDay
+        let historyDescriptor = FetchDescriptor<DailyLog>(
+            predicate: #Predicate<DailyLog> { log in log.date >= historyStart },
+            sortBy: [SortDescriptor(\.date, order: .forward)]
+        )
+        let allLogs = (try? context.fetch(historyDescriptor)) ?? []
         let streak = StreakCalculator.calculate(from: allLogs)
 
         let weekLogs = allLogs.filter { $0.date >= weekAgo }

@@ -13,6 +13,19 @@ import Foundation
 import SwiftData
 
 enum SomaLogWriter {
+    /// Strings the engines produce when they have no real place to report. Storing one as a venue is how
+    /// "Quick AI Log" ended up on an entry.
+    static let locationPlaceholders: Set<String> = [
+        "Voice Memo", "Quick AI Log", "Captured with Camera", "Soma AI Log", "Logged with Soma AI"
+    ]
+
+    /// The venue an analysis actually named, or nil when it only produced a placeholder.
+    static func realLocation(_ analysisLocation: String) -> String? {
+        let trimmed = analysisLocation.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !locationPlaceholders.contains(trimmed) else { return nil }
+        return trimmed
+    }
+
     struct Written {
         let foodEntry: FoodEntry
         let aiEntry: AIMealEntry

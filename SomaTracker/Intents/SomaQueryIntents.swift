@@ -103,6 +103,29 @@ struct SomaToday {
         }
     }
 
+    /// Today's meals in order, for the question the store can answer better than any model.
+    var todayMealList: [String] {
+        (log?.foodEntries ?? [])
+            .sorted { $0.timestamp < $1.timestamp }
+            .map { "\($0.name) (\($0.calories) kcal)" }
+    }
+
+    /// "What did I eat today", answered by naming the meals and their running totals.
+    var todayMealsAnswer: String {
+        let meals = todayMealList
+        let arabic = SpeechLanguage.resolved() == .arabic
+
+        guard !meals.isEmpty else {
+            return arabic ? "لسه مفيش حاجة متسجلة النهاردة." : "Nothing logged today yet."
+        }
+
+        let consumed = (log?.totalCalories ?? 0).formatted()
+        let protein = Int((log?.totalProtein ?? 0).rounded())
+        return arabic
+            ? "النهاردة: \(meals.joined(separator: "، ")). المجموع \(consumed) كالوري و\(protein) جرام بروتين."
+            : "Today: \(meals.joined(separator: ", ")). That is \(consumed) kcal and \(protein) g protein."
+    }
+
     /// One line of today's numbers, for the chat header. Siri gets the full sentence; the chat only has
     /// room for the two that matter most.
     var compactSummary: String {

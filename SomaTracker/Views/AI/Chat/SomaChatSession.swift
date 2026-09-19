@@ -20,6 +20,17 @@ enum SomaChatSettings {
     static let surfaceKey = "soma_chat_surface"
 }
 
+extension SomaChatIntent {
+    /// Whether answering this costs an engine call. The day's own numbers, the streak and today's meals
+    /// come from the store, so a free user keeps them; a log or a question that needs an engine does not.
+    var needsEntitlement: Bool {
+        switch self {
+        case .status, .streak, .today: return false
+        case .log, .ask, .advice: return true
+        }
+    }
+}
+
 @Observable
 final class SomaChatSession {
     private(set) var messages: [SomaChatMessage] = []
@@ -29,6 +40,9 @@ final class SomaChatSession {
 
     /// Photos attached but not sent yet.
     var pendingPhotos: [Data] = []
+    /// Bumped on every send and clear. A photo load that started before the bump is discarded rather
+    /// than appended to the next message, which is how photos used to ride along with the wrong send.
+    private var attachGeneration = 0
     var pickerItems: [PhotosPickerItem] = [] {
         didSet { Task { await loadPickedItems() } }
     }
@@ -55,12 +69,21 @@ final class SomaChatSession {
             return
         }
 
+        // An attached photo is the meal itself, whatever the words around it say.
+        let intent: SomaChatIntent = photos.isEmpty ? SomaChatIntentClassifier.classify(text) : .log
+
+        // "How many calories left" is answered from the store, so the paywall does not stand in front of
+        // it. Only work that reaches an engine needs the subscription.
+        if intent.needsEntitlement, !subscription.canUseAIFeatures {
+            needsPaywall = true
+            return
+        }
+
         messages.append(.user(text: text, photos: photos))
         input = ""
         pendingPhotos = []
+        attachGeneration += 1
 
-        // An attached photo is the meal itself, whatever the words around it say.
-        let intent: SomaChatIntent = photos.isEmpty ? SomaChatIntentClassifier.classify(text) : .log
         await handle(intent: intent, text: text, photos: photos, voice: nil, context: context, subscription: subscription)
     }
 
@@ -68,24 +91,46 @@ final class SomaChatSession {
         transcript: String,
         audioRelativePath: String?,
         alternatives: [String],
+        samples: [Float],
         duration: TimeInterval,
         context: ModelContext,
         subscription: SubscriptionManager
     ) async {
-        guard subscription.canUseAIFeatures else {
+        let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Nothing was heard. Say so and drop the recording rather than sending silence to an engine and
+        // leaving the file behind.
+        guard !text.isEmpty else {
+            if let audioRelativePath {
+                let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                try? FileManager.default.removeItem(at: documents.appendingPathComponent(audioRelativePath))
+            }
+            messages.append(.notice(SpeechLanguage.resolved() == .arabic
+                                    ? "مسمعتش حاجة. جرّب تاني وأتكلم عن وجبتك."
+                                    : "I didn't catch anything. Try again and describe the meal."))
+            return
+        }
+
+        let intent = SomaChatIntentClassifier.classify(text)
+        if intent.needsEntitlement, !subscription.canUseAIFeatures {
             needsPaywall = true
             return
         }
 
-        let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        let voice = VoiceAttachment(relativePath: audioRelativePath, samples: [], duration: duration)
-        messages.append(.user(text: text, voiceRelativePath: audioRelativePath, voiceDuration: duration))
+        let voice = VoiceAttachment(relativePath: audioRelativePath, samples: samples, duration: duration)
+        messages.append(.user(
+            text: text,
+            voiceRelativePath: audioRelativePath,
+            voiceDuration: duration,
+            voiceWaveformSamples: samples
+        ))
 
         await handle(
-            intent: SomaChatIntentClassifier.classify(text),
+            intent: intent,
             text: text,
             photos: [],
             voice: voice,
+            alternatives: alternatives,
             context: context,
             subscription: subscription
         )
@@ -96,6 +141,7 @@ final class SomaChatSession {
         text: String,
         photos: [Data],
         voice: VoiceAttachment?,
+        alternatives: [String] = [],
         context: ModelContext,
         subscription: SubscriptionManager
     ) async {
@@ -107,14 +153,24 @@ final class SomaChatSession {
         case .streak:
             messages.append(.answer(SomaToday.streakAnswer(context: context)))
 
+        case .today:
+            messages.append(.answer(SomaToday(context: context).todayMealsAnswer))
+
         case .ask:
-            await answerQuestion(text: text, photos: photos)
+            await answerQuestion(text: text, photos: photos, subscription: subscription)
 
         case .advice:
             await advise(text: text, context: context)
 
         case .log:
-            await analyze(text: text, photos: photos, voice: voice, context: context, subscription: subscription)
+            await analyze(
+                text: text,
+                photos: photos,
+                voice: voice,
+                alternatives: alternatives,
+                context: context,
+                subscription: subscription
+            )
         }
     }
 
@@ -122,7 +178,19 @@ final class SomaChatSession {
 
     /// A question is answered, never written. The numbers come from the same engine a log would use, but
     /// the journal only changes if the user taps "Log this".
-    private func answerQuestion(text: String, photos: [Data]) async {
+    private func answerQuestion(text: String, photos: [Data], subscription: SubscriptionManager) async {
+        // The app's database answers for free when it knows the dish: exact numbers, no model call, no
+        // cost, no waiting. The engines are only asked about dishes it does not know.
+        if photos.isEmpty, let local = localDishAnswer(for: text) {
+            messages.append(local)
+            return
+        }
+
+        guard subscription.canUseAIFeatures else {
+            needsPaywall = true
+            return
+        }
+
         isThinking = true
         thinkingLabel = SpeechLanguage.resolved() == .arabic ? "بفكر" : "Working that out"
         defer { isThinking = false }
@@ -155,12 +223,60 @@ final class SomaChatSession {
         messages.append(.answer(answer.text, sources: answer.sources))
     }
 
+    /// The app's own numbers for a dish it knows, as a reply the user can log. Marked as a fallback
+    /// answer so the cloud review does not spend a call checking numbers that came from the app's own
+    /// table.
+    private func localDishAnswer(for text: String) -> SomaChatMessage? {
+        let parsed = FoodNutritionDatabase.shared.parseInput(text)
+        guard parsed.title != "No Food Detected" else { return nil }
+
+        if parsed.isWater, parsed.waterML > 0 {
+            return .analysis(
+                AIMealAnalysisResult(
+                    title: parsed.title,
+                    location: "",
+                    storyNarrative: parsed.summary,
+                    calories: 0,
+                    proteinG: 0,
+                    carbsG: 0,
+                    fatG: 0,
+                    waterML: parsed.waterML,
+                    confidence: 1,
+                    items: [],
+                    engine: .onDeviceFallback
+                ),
+                linkedEntryID: nil,
+                isLogged: false
+            )
+        }
+
+        guard parsed.calories > 0 else { return nil }
+        return .analysis(
+            AIMealAnalysisResult(
+                title: parsed.title,
+                location: "",
+                storyNarrative: parsed.summary,
+                calories: parsed.calories,
+                proteinG: parsed.proteinG,
+                carbsG: parsed.carbsG,
+                fatG: parsed.fatG,
+                waterML: 0,
+                confidence: 1,
+                items: [],
+                engine: .onDeviceFallback
+            ),
+            linkedEntryID: nil,
+            isLogged: false
+        )
+    }
+
     // MARK: - The log path
 
     private func analyze(
         text: String,
         photos: [Data],
         voice: VoiceAttachment?,
+        alternatives: [String],
         context: ModelContext,
         subscription: SubscriptionManager
     ) async {
@@ -182,7 +298,7 @@ final class SomaChatSession {
             photos: photos,
             audioURL: nil,
             directTranscription: text.isEmpty ? nil : text,
-            alternativeTranscriptions: []
+            alternativeTranscriptions: alternatives
         )
 
         if analysis.isNoFood || analysis.title == "No Food Detected" {
@@ -224,7 +340,13 @@ final class SomaChatSession {
 
     /// Writes an answered question into the journal, on the user's say so.
     func log(message: SomaChatMessage, context: ModelContext, subscription: SubscriptionManager) async {
-        guard !message.isLogged else { return }
+        // The live copy, not the one this button was rendered with: a second tap arrives holding a
+        // version from before the first write finished, and writing twice would double the entry and
+        // spend two scans.
+        guard let index = messages.firstIndex(where: { $0.id == message.id }),
+              !messages[index].isLogged else { return }
+        let message = messages[index]
+
         guard subscription.canUseAIFeatures else {
             needsPaywall = true
             return
@@ -277,14 +399,19 @@ final class SomaChatSession {
         let resolved = await LocationService.shared.fetchCurrentLocation()
         let entry = written.aiEntry
 
-        if !analysis.location.isEmpty {
-            if !resolved.isEmpty, !analysis.location.contains(resolved) {
-                entry.location = "\(analysis.location) · \(resolved)"
+        // A placeholder is not a venue: the same rule the AI tab applies, from one place.
+        if let named = SomaLogWriter.realLocation(analysis.location) {
+            if !resolved.isEmpty, !named.contains(resolved) {
+                entry.location = "\(named) · \(resolved)"
             }
         } else if !resolved.isEmpty {
             entry.location = resolved
         }
-        try? context.save()
+        do {
+            try context.save()
+        } catch {
+            print("[SomaChat] Location patch not saved: \(error.localizedDescription)")
+        }
 
         await HealthSyncService.shared.syncDay(written.dailyLog)
 
@@ -339,8 +466,13 @@ final class SomaChatSession {
     }
 
     /// Empties the conversation. The journal is untouched, since the logs themselves are the record.
+    /// Refused while an engine is mid-answer, because the reply would land in a conversation the user
+    /// believes they emptied.
     func clear() {
+        guard !isThinking else { return }
         messages.removeAll()
+        attachGeneration += 1
+        pendingPhotos = []
     }
 
     // MARK: - Attachments
@@ -348,6 +480,7 @@ final class SomaChatSession {
     private func loadPickedItems() async {
         guard !pickerItems.isEmpty else { return }
         let items = pickerItems
+        let generation = attachGeneration
         pickerItems = []
 
         var loaded: [Data] = []
@@ -357,6 +490,8 @@ final class SomaChatSession {
                   let jpeg = SomaImage.jpeg(from: image) else { continue }
             loaded.append(jpeg)
         }
+
+        guard generation == attachGeneration else { return }
 
         // Five is the ceiling the cloud request is built for.
         pendingPhotos = Array((pendingPhotos + loaded).prefix(5))

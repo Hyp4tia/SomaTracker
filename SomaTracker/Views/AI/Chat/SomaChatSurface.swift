@@ -23,8 +23,15 @@ struct SomaChatSurface: View {
     @State private var showCamera = false
     @State private var capturedImage: UIImage?
     @State private var showMicAlert = false
+    @State private var showClearConfirm = false
     /// Today's numbers, shown under the title so the chat is never blind to the day it is about.
     @State private var daySummary = ""
+    /// How far the surface has been pulled down by the header, damped. Without it a drag was invisible
+    /// until it either collapsed the chat or did nothing.
+    @State private var dragOffset: CGFloat = 0
+    /// The one timer in this file, kept so it can be cancelled: an uncancellable one raised the keyboard
+    /// over a chat the user had already closed.
+    @State private var pendingFocus: Task<Void, Never>?
 
     @FocusState private var isComposerFocused: Bool
 
@@ -38,14 +45,14 @@ struct SomaChatSurface: View {
             // not by anything in this file.
             composer
         }
-        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        // The surface bleeds to the physical bottom edge while its content stays inside the safe
-        // area, so the composer never sits in the home-indicator zone.
-        .background(
-            Color(.systemGroupedBackground)
-                .ignoresSafeArea(edges: .bottom)
-        )
+        .clipShape(topRoundedShape)
+        // The surface bleeds to the physical bottom edge while its content stays inside the safe area,
+        // so the composer never sits in the home-indicator zone. The background carries the same top
+        // corners as the content, or square grey edges poke out above the rounded header.
+        .background(topRoundedShape.fill(Color(.systemGroupedBackground)).ignoresSafeArea(edges: .bottom))
+        .offset(y: dragOffset)
         .hideTabBarWithCoordinator()
+        .accessibilityAddTraits(isExpanded ? .isModal : [])
         .photosPicker(isPresented: $showLibrary, selection: $session.pickerItems, maxSelectionCount: 5, matching: .images)
         .fullScreenCover(isPresented: $showCamera) {
             CameraCapturePicker(selectedImage: $capturedImage)
@@ -60,18 +67,31 @@ struct SomaChatSurface: View {
         .sheet(isPresented: $session.needsPaywall) {
             SomaPaywallView()
         }
+        .confirmationDialog(
+            SpeechLanguage.resolved() == .arabic ? "تمسح المحادثة؟" : "Clear this conversation?",
+            isPresented: $showClearConfirm,
+            titleVisibility: .visible
+        ) {
+            Button(SpeechLanguage.resolved() == .arabic ? "امسح" : "Clear", role: .destructive) {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                withAnimation(.snappy(duration: 0.25)) { session.clear() }
+            }
+            Button(SpeechLanguage.resolved() == .arabic ? "إلغاء" : "Cancel", role: .cancel) {}
+        } message: {
+            Text(SpeechLanguage.resolved() == .arabic
+                 ? "الوجبات المسجلة في يومك مش هتتأثر."
+                 : "Entries already in your journal are kept either way.")
+        }
         .onDisappear {
             // A safety net for an exit that did not run the collapse path, so the bar can never be left
             // hidden by this surface.
+            pendingFocus?.cancel()
+            dragOffset = 0
             TabBarCoordinator.setTabBarVisible(true)
         }
         .onAppear {
             refreshDaySummary()
-            // The conversation opens ready to type: asking for the keyboard after the rise animation
-            // avoids fighting it for the same frames.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                isComposerFocused = true
-            }
+            armInitialFocus()
         }
         .onChange(of: session.messages.count) { _, _ in
             refreshDaySummary()
@@ -88,6 +108,22 @@ struct SomaChatSurface: View {
         }
     }
 
+    private var topRoundedShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26, style: .continuous)
+    }
+
+    /// Opens the keyboard once the rise animation is done. A stored task, not a bare timer: the previous
+    /// version fired whatever happened in between, which could raise the keyboard over a chat being
+    /// closed or over a live recording.
+    private func armInitialFocus() {
+        pendingFocus?.cancel()
+        pendingFocus = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled, isExpanded else { return }
+            isComposerFocused = true
+        }
+    }
+
     // MARK: - Header
 
     private var header: some View {
@@ -98,11 +134,11 @@ struct SomaChatSurface: View {
                 .padding(.top, 8)
 
             HStack(spacing: 10) {
-                SomaThinkingIndicator(size: 30)
+                SomaThinkingIndicator(isAnimating: session.isThinking, size: 30)
 
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text("Soma")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(Color(.label))
 
                     Text(subtitle)
@@ -116,9 +152,7 @@ struct SomaChatSurface: View {
 
                 if !session.messages.isEmpty {
                     Button(role: .destructive) {
-                        withAnimation(.snappy(duration: 0.25)) {
-                            session.clear()
-                        }
+                        showClearConfirm = true
                     } label: {
                         Image(systemName: "eraser")
                             .font(.system(size: 14, weight: .semibold))
@@ -126,8 +160,11 @@ struct SomaChatSurface: View {
                             .frame(width: 32, height: 32)
                             .background(Color(.secondarySystemBackground))
                             .clipShape(Circle())
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Clear conversation")
                 }
 
                 Button {
@@ -139,8 +176,11 @@ struct SomaChatSurface: View {
                         .frame(width: 32, height: 32)
                         .background(SomaColors.navy.opacity(0.10))
                         .clipShape(Circle())
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Close chat")
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 10)
@@ -148,8 +188,13 @@ struct SomaChatSurface: View {
         .contentShape(Rectangle())
         .gesture(
             DragGesture()
+                .onChanged { value in
+                    // Damped, and never upward: the surface can be pulled down, not pushed off the top.
+                    dragOffset = max(0, value.translation.height) * 0.35
+                }
                 .onEnded { value in
                     if value.translation.height > 60 { collapse() }
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { dragOffset = 0 }
                 }
         )
         .background(SomaColors.white)
@@ -216,7 +261,6 @@ struct SomaChatSurface: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .background(SomaColors.white)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 2)
@@ -225,7 +269,7 @@ struct SomaChatSurface: View {
     private var thinkingRow: some View {
         HStack(alignment: .bottom, spacing: 8) {
             HStack(spacing: 12) {
-                SomaThinkingIndicator(isAnimating: true)
+                SomaThinkingIndicator(isAnimating: true, size: 44)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(session.thinkingLabel)
@@ -240,6 +284,7 @@ struct SomaChatSurface: View {
             .background(SomaColors.white)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 2)
+            .accessibilityElement(children: .combine)
 
             Spacer(minLength: 46)
         }
@@ -255,11 +300,17 @@ struct SomaChatSurface: View {
             HStack(spacing: 10) {
                 attachMenu
 
+                // A raised rounded field, the shape every other input in Soma uses. The bare text field
+                // this replaces was the one place the chat looked like it had been bolted on.
                 TextField(placeholder, text: $session.input)
                     .font(.system(size: 15))
                     .focused($isComposerFocused)
                     .submitLabel(.send)
                     .onSubmit { send() }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 trailingButton
             }
@@ -267,6 +318,10 @@ struct SomaChatSurface: View {
         .padding(.horizontal, 14)
         .padding(.top, 10)
         .padding(.bottom, 12)
+        // Scoped to the strips themselves: they appear and disappear under the field, which used to make
+        // the row jump by a strip's height with no animation.
+        .animation(.snappy(duration: 0.2), value: session.pendingPhotos.isEmpty)
+        .animation(.snappy(duration: 0.2), value: speech.isRecordingLive)
         .background(SomaColors.white)
         .overlay(alignment: .top) {
             Rectangle()
@@ -301,9 +356,13 @@ struct SomaChatSurface: View {
                 .frame(width: 32, height: 32)
                 .background(SomaColors.navy.opacity(0.08))
                 .clipShape(Circle())
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+                .opacity(session.isThinking ? 0.4 : 1)
         }
         .buttonStyle(.plain)
         .disabled(session.isThinking)
+        .accessibilityLabel("Add a photo or take one")
     }
 
     private var trailingButton: some View {
@@ -318,9 +377,12 @@ struct SomaChatSurface: View {
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(.white)
                     }
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .transition(.scale)
+                .accessibilityLabel("Stop recording")
             } else if hasContent {
                 Button {
                     send()
@@ -331,10 +393,14 @@ struct SomaChatSurface: View {
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                     }
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
+                    .opacity(session.isThinking ? 0.4 : 1)
                 }
                 .buttonStyle(.plain)
                 .disabled(session.isThinking)
                 .transition(.scale)
+                .accessibilityLabel("Send")
             } else {
                 Button {
                     startRecording()
@@ -345,9 +411,14 @@ struct SomaChatSurface: View {
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(SomaColors.navy)
                     }
+                    .frame(width: 44, height: 44)
+                    .contentShape(Circle())
+                    .opacity(session.isThinking ? 0.4 : 1)
                 }
                 .buttonStyle(.plain)
+                .disabled(session.isThinking)
                 .transition(.scale)
+                .accessibilityLabel("Start a voice message")
             }
         }
     }
@@ -367,6 +438,7 @@ struct SomaChatSurface: View {
                                 .scaledToFill()
                                 .frame(width: 56, height: 56)
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .accessibilityLabel("Attached photo \(index + 1) of \(session.pendingPhotos.count)")
 
                             Button {
                                 session.pendingPhotos.remove(at: index)
@@ -377,9 +449,11 @@ struct SomaChatSurface: View {
                                     .frame(width: 18, height: 18)
                                     .background(Color.black.opacity(0.6))
                                     .clipShape(Circle())
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Circle())
                             }
                             .buttonStyle(.plain)
-                            .padding(3)
+                            .accessibilityLabel("Remove attached photo \(index + 1)")
                         }
                     }
                 }
@@ -393,7 +467,7 @@ struct SomaChatSurface: View {
                 .fill(SomaColors.coral)
                 .frame(width: 8, height: 8)
 
-            Text(String(format: "%.1fs", speech.recordingDuration))
+            Text(String(format: "%d:%02d", Int(speech.recordingDuration) / 60, Int(speech.recordingDuration) % 60))
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Color(.label))
                 .monospacedDigit()
@@ -403,27 +477,27 @@ struct SomaChatSurface: View {
 
             Spacer(minLength: 0)
 
-            Text(SpeechLanguage.resolved() == .arabic ? "اضغط للإيقاف" : "Tap to stop")
+            // The strip is not tappable; the stop control below it is what the user needs to press.
+            Text(SpeechLanguage.resolved() == .arabic ? "جاري التسجيل" : "Recording")
                 .font(.system(size: 11))
                 .foregroundStyle(Color(.secondaryLabel))
         }
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Actions
 
     private func send() {
         guard !session.isThinking else { return }
-
-        // A conversation means asking the next thing without reopening the keyboard. Nothing in this
-        // file dismisses it any more, so this assignment is a no-op that costs nothing; it is here only
-        // so that a future dismissal shows up as a bug rather than as silent focus loss.
-        isComposerFocused = true
         Task {
             await session.send(context: modelContext, subscription: subscriptionManager)
         }
     }
 
     private func startRecording() {
+        guard !session.isThinking else { return }
+        // The keyboard's timer must not fire over a recording that is already running.
+        pendingFocus?.cancel()
         isComposerFocused = false
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         guard speech.startLiveTranscription() else {
@@ -440,6 +514,7 @@ struct SomaChatSurface: View {
                 transcript: recording.text,
                 audioRelativePath: recording.relativePath,
                 alternatives: recording.alternatives,
+                samples: recording.samples,
                 duration: recording.duration,
                 context: modelContext,
                 subscription: subscriptionManager
@@ -448,6 +523,7 @@ struct SomaChatSurface: View {
     }
 
     private func collapse() {
+        pendingFocus?.cancel()
         isComposerFocused = false
         withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
             isExpanded = false
@@ -498,6 +574,7 @@ struct SomaChatLauncher: View {
             .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Open the Soma conversation")
     }
 
     private var placeholder: String {
