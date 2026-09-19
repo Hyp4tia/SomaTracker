@@ -103,6 +103,19 @@ struct SomaToday {
         }
     }
 
+    /// "620 kcal left", the pill the chat header shows. Same goal and same log the journal reads, said
+    /// in the user's language.
+    var remainingCaloriesShort: String {
+        let remaining = calorieGoal - (log?.totalCalories ?? 0)
+        let arabic = SpeechLanguage.resolved() == .arabic
+        if remaining < 0 {
+            let over = (-remaining).formatted()
+            return arabic ? "زيادة \(over) سعرة" : "\(over) kcal over"
+        }
+        let left = remaining.formatted()
+        return arabic ? "باقي \(left) سعرة" : "\(left) kcal left"
+    }
+
     /// Today's meals in order, for the question the store can answer better than any model.
     var todayMealList: [String] {
         (log?.foodEntries ?? [])

@@ -6,6 +6,9 @@
 //  back into it. The tab underneath is untouched, so switching this feature off returns the screen to
 //  exactly what it was.
 //
+//  A conversation, not a form. Bubbles on a grouped background, one floating composer pill, and the
+//  day's number kept as a small pill in the header so the chat is never blind to the day it is about.
+//
 
 import PhotosUI
 import SwiftData
@@ -24,15 +27,14 @@ struct SomaChatSurface: View {
     @State private var capturedImage: UIImage?
     @State private var showMicAlert = false
     @State private var showClearConfirm = false
-    /// Today's numbers, shown under the title so the chat is never blind to the day it is about.
-    @State private var daySummary = ""
+    /// "620 kcal left", in the header.
+    @State private var dayPill = ""
     /// How far the surface has been pulled down by the header, damped. Without it a drag was invisible
     /// until it either collapsed the chat or did nothing.
     @State private var dragOffset: CGFloat = 0
     /// The one timer in this file, kept so it can be cancelled: an uncancellable one raised the keyboard
     /// over a chat the user had already closed.
     @State private var pendingFocus: Task<Void, Never>?
-
     /// Whether the keyboard belongs to the composer right now. The UIKit field enforces this, which is
     /// what makes the keyboard survive a send.
     @State private var composerActive = false
@@ -41,16 +43,12 @@ struct SomaChatSurface: View {
         VStack(spacing: 0) {
             header
             messageList
-            // A plain sibling, deliberately. As a bottom inset of the scroll view it was rebuilt every
-            // time the list's content changed, which is every send, and a rebuilt text field cannot hold
-            // focus. The keyboard is kept away from it by the VStack respecting the keyboard's safe area,
-            // not by anything in this file.
             composer
         }
         .clipShape(topRoundedShape)
         // The surface bleeds to the physical bottom edge while its content stays inside the safe area,
         // so the composer never sits in the home-indicator zone. The background carries the same top
-        // corners as the content, or square grey edges poke out above the rounded header.
+        // corners as the content, or square grey edges poke out above them.
         .background(topRoundedShape.fill(Color(.systemGroupedBackground)).ignoresSafeArea(edges: .bottom))
         .offset(y: dragOffset)
         .hideTabBarWithCoordinator()
@@ -95,11 +93,11 @@ struct SomaChatSurface: View {
             TabBarCoordinator.setTabBarVisible(true)
         }
         .onAppear {
-            refreshDaySummary()
+            refreshDayPill()
             armInitialFocus()
         }
         .onChange(of: session.messages.count) { _, _ in
-            refreshDaySummary()
+            refreshDayPill()
         }
         .onChange(of: session.pendingPhotos.count) { _, _ in
             // Coming back from the photo library, the chat is ready to be typed in again.
@@ -121,6 +119,8 @@ struct SomaChatSurface: View {
         UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26, style: .continuous)
     }
 
+    private var isArabic: Bool { SpeechLanguage.resolved() == .arabic }
+
     /// Opens the keyboard once the rise animation is done. A stored task, not a bare timer: the previous
     /// version fired whatever happened in between, which could raise the keyboard over a chat being
     /// closed or over a live recording.
@@ -136,39 +136,41 @@ struct SomaChatSurface: View {
     // MARK: - Header
 
     private var header: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             Capsule()
                 .fill(Color(.tertiaryLabel).opacity(0.5))
                 .frame(width: 38, height: 5)
                 .padding(.top, 8)
 
-            HStack(spacing: 10) {
-                SomaThinkingIndicator(isAnimating: session.isThinking, size: 30)
+            HStack(spacing: 8) {
+                SomaThinkingIndicator(isAnimating: session.isThinking, size: 26)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Soma")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(Color(.label))
+                Text("Soma")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color(.label))
 
-                    Text(subtitle)
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color(.secondaryLabel))
+                Spacer(minLength: 8)
+
+                if !dayPill.isEmpty {
+                    Text(dayPill)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(SomaColors.navy)
                         .lineLimit(1)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(SomaColors.navy.opacity(0.08), in: Capsule())
                         .contentTransition(.numericText())
                 }
-
-                Spacer(minLength: 0)
 
                 if !session.messages.isEmpty {
                     Button(role: .destructive) {
                         showClearConfirm = true
                     } label: {
                         Image(systemName: "eraser")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Color(.secondaryLabel))
                             .frame(width: 32, height: 32)
-                            .background(Color(.secondarySystemBackground))
-                            .clipShape(Circle())
+                            .contentShape(Circle())
                             .frame(width: 44, height: 44)
                             .contentShape(Circle())
                     }
@@ -180,7 +182,7 @@ struct SomaChatSurface: View {
                     collapse()
                 } label: {
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(SomaColors.navy)
                         .frame(width: 32, height: 32)
                         .background(SomaColors.navy.opacity(0.10))
@@ -191,8 +193,8 @@ struct SomaChatSurface: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Close chat")
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 10)
+            .padding(.horizontal, 14)
+            .padding(.bottom, 8)
         }
         .contentShape(Rectangle())
         .gesture(
@@ -206,44 +208,46 @@ struct SomaChatSurface: View {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { dragOffset = 0 }
                 }
         )
-        .background(SomaColors.white)
     }
 
-    private var subtitle: String {
-        if session.isThinking { return session.thinkingLabel }
-        if !daySummary.isEmpty { return daySummary }
-        return SpeechLanguage.resolved() == .arabic
-            ? "اسألني عن يومك أو سجّل وجبتك"
-            : "Ask about your day, or log a meal"
-    }
-
-    private func refreshDaySummary() {
-        let summary = SomaToday(context: modelContext).compactSummary
+    private func refreshDayPill() {
+        let pill = SomaToday(context: modelContext).remainingCaloriesShort
         withAnimation(.snappy(duration: 0.25)) {
-            daySummary = summary
+            dayPill = pill
         }
     }
 
-    // MARK: - Messages
+    // MARK: - Conversation
 
     private var messageList: some View {
         ScrollView {
-            LazyVStack(spacing: 14) {
-                if session.messages.isEmpty { emptyState }
+            LazyVStack(spacing: 8) {
+                if session.messages.isEmpty {
+                    SomaChatBubble(message: .answer(greeting))
+                        .transition(.opacity)
+                } else {
+                    separator(isArabic ? "النهاردة" : "Today")
+                }
 
-                ForEach(session.messages) { message in
+                ForEach(Array(session.messages.enumerated()), id: \.element.id) { index, message in
+                    // A quiet time marker when a stretch of the conversation passes, the way Messages
+                    // does it, so a long thread keeps its shape.
+                    if index > 0, message.timestamp.timeIntervalSince(session.messages[index - 1].timestamp) > 600 {
+                        separator(message.timestamp.formatted(date: .omitted, time: .shortened))
+                    }
+
                     SomaChatBubble(message: message) {
                         Task {
                             await session.log(message: message, context: modelContext, subscription: subscriptionManager)
                         }
                     }
-                        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .bottom)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .bottom)))
                 }
 
                 if session.isThinking { thinkingRow }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
             .animation(.spring(response: 0.38, dampingFraction: 0.86), value: session.messages.count)
             .animation(.spring(response: 0.38, dampingFraction: 0.86), value: session.isThinking)
         }
@@ -254,48 +258,31 @@ struct SomaChatSurface: View {
         .scrollDismissesKeyboard(.never)
     }
 
-    private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SomaThinkingIndicator()
+    private var greeting: String {
+        isArabic
+            ? "أنا Soma. اسألني عن سعرات النهاردة أو البروتين، أو قولي أكلت إيه وأنا أسجله."
+            : "I'm Soma. Ask me about today's calories or protein, or just tell me what you ate and I'll log it."
+    }
 
-            Text(SpeechLanguage.resolved() == .arabic ? "اتكلم معايا" : "Talk to me")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(Color(.label))
-
-            Text(SpeechLanguage.resolved() == .arabic
-                 ? "اكتب أو اتكلم عن وجبتك، ابعت صورة، أو اسألني عن سعرات النهاردة والبروتين والمية."
-                 : "Describe a meal, send a photo, or ask me about today's calories, protein, water or steps.")
-                .font(.system(size: 14))
-                .foregroundStyle(Color(.secondaryLabel))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(SomaColors.white)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 2)
+    private func separator(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Color(.tertiaryLabel))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
     }
 
     private var thinkingRow: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            HStack(spacing: 12) {
-                SomaThinkingIndicator(isAnimating: true, size: 44)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(session.thinkingLabel)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color(.label))
-
+        HStack(alignment: .bottom, spacing: 0) {
+            SomaChatBubble(
+                message: .answer(session.thinkingLabel),
+                accessory: AnyView(
                     ShimmerProgressBar()
                         .frame(width: 120)
-                }
-            }
-            .padding(14)
-            .background(SomaColors.white)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 2)
-            .accessibilityElement(children: .combine)
+                )
+            )
 
-            Spacer(minLength: 46)
+            Spacer(minLength: 0)
         }
     }
 
@@ -305,47 +292,75 @@ struct SomaChatSurface: View {
         VStack(spacing: 10) {
             if !session.pendingPhotos.isEmpty { attachmentStrip }
             if speech.isRecordingLive { recordingStrip }
+            if session.messages.isEmpty { suggestionChips }
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 attachMenu
 
-                // A raised rounded field, the shape every other input in Soma uses, backed by UIKit so
-                // the return key sends without giving up the keyboard.
+                // The field lives in UIKit so the return key sends without taking the keyboard with it.
                 SomaComposerField(
                     text: $session.input,
-                    placeholder: placeholder,
+                    placeholder: composerPlaceholder,
                     wantsFocus: composerActive,
                     onSend: { send() },
                     onFocusChange: { focused in composerActive = focused }
                 )
                 .frame(minHeight: 22)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.horizontal, 2)
 
                 trailingButton
             }
+            .padding(.leading, 8)
+            .padding(.trailing, 6)
+            .padding(.vertical, 6)
+            .background(SomaColors.white, in: Capsule())
+            .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
         }
         .padding(.horizontal, 14)
-        .padding(.top, 10)
-        .padding(.bottom, 12)
-        // Scoped to the strips themselves: they appear and disappear under the field, which used to make
-        // the row jump by a strip's height with no animation.
+        .padding(.top, 6)
+        .padding(.bottom, 10)
+        // Scoped to the strips themselves: they appear and disappear around the pill, which used to make
+        // the row jump with no animation.
         .animation(.snappy(duration: 0.2), value: session.pendingPhotos.isEmpty)
         .animation(.snappy(duration: 0.2), value: speech.isRecordingLive)
-        .background(SomaColors.white)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(SomaColors.navy.opacity(0.07))
-                .frame(height: 1)
-        }
+        .animation(.snappy(duration: 0.2), value: hasContent)
     }
 
-    private var placeholder: String {
-        SpeechLanguage.resolved() == .arabic
-            ? "اكتب وجبتك أو سؤالك"
-            : "Describe a meal, or ask a question"
+    private var composerPlaceholder: String {
+        isArabic ? "اكتب رسالة لسوما" : "Message Soma…"
+    }
+
+    /// What Soma can actually do, as one tap. Shown while the conversation is empty and gone once it
+    /// has started, so it is a way in rather than clutter.
+    private var suggestionChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                ForEach(suggestionTexts, id: \.self) { text in
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        session.input = text
+                        send()
+                    } label: {
+                        Text(text)
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .foregroundStyle(SomaColors.navy)
+                            .lineLimit(1)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 9)
+                            .background(SomaColors.white, in: Capsule())
+                            .overlay(Capsule().strokeBorder(SomaColors.navy.opacity(0.12)))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .contentMargins(.horizontal, 0, for: .scrollContent)
+    }
+
+    private var suggestionTexts: [String] {
+        isArabic
+            ? ["باقيلي كام سعرة؟", "اقترحلي عشا", "أكلت كشري"]
+            : ["How many calories left?", "Suggest dinner", "I ate koshary"]
     }
 
     private var attachMenu: some View {
@@ -363,11 +378,10 @@ struct SomaChatSurface: View {
             }
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 15, weight: .bold))
+                .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(SomaColors.navy)
                 .frame(width: 32, height: 32)
-                .background(SomaColors.navy.opacity(0.08))
-                .clipShape(Circle())
+                .background(SomaColors.navy.opacity(0.08), in: Circle())
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
                 .opacity(session.isThinking ? 0.4 : 1)
@@ -384,7 +398,7 @@ struct SomaChatSurface: View {
                     stopRecording()
                 } label: {
                     ZStack {
-                        Circle().fill(SomaColors.coral).frame(width: 32, height: 32)
+                        Circle().fill(SomaColors.coral).frame(width: 34, height: 34)
                         Image(systemName: "stop.fill")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(.white)
@@ -400,9 +414,9 @@ struct SomaChatSurface: View {
                     send()
                 } label: {
                     ZStack {
-                        Circle().fill(SomaColors.navy).frame(width: 32, height: 32)
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 13, weight: .bold))
+                        Circle().fill(SomaColors.navy).frame(width: 34, height: 34)
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(.white)
                     }
                     .frame(width: 44, height: 44)
@@ -412,15 +426,15 @@ struct SomaChatSurface: View {
                 .buttonStyle(.plain)
                 .disabled(session.isThinking)
                 .transition(.scale)
-                .accessibilityLabel("Send")
+                .accessibilityLabel("Send to Soma")
             } else {
                 Button {
                     startRecording()
                 } label: {
                     ZStack {
-                        Circle().fill(SomaColors.navy.opacity(0.08)).frame(width: 32, height: 32)
+                        Circle().fill(SomaColors.navy.opacity(0.08)).frame(width: 34, height: 34)
                         Image(systemName: "mic.fill")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(SomaColors.navy)
                     }
                     .frame(width: 44, height: 44)
@@ -448,7 +462,7 @@ struct SomaChatSurface: View {
                             Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()
-                                .frame(width: 56, height: 56)
+                                .frame(width: 64, height: 64)
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 .accessibilityLabel("Attached photo \(index + 1) of \(session.pendingPhotos.count)")
 
@@ -459,8 +473,7 @@ struct SomaChatSurface: View {
                                     .font(.system(size: 9, weight: .bold))
                                     .foregroundStyle(.white)
                                     .frame(width: 18, height: 18)
-                                    .background(Color.black.opacity(0.6))
-                                    .clipShape(Circle())
+                                    .background(Color.black.opacity(0.6), in: Circle())
                                     .frame(width: 44, height: 44)
                                     .contentShape(Circle())
                             }
@@ -489,11 +502,14 @@ struct SomaChatSurface: View {
 
             Spacer(minLength: 0)
 
-            // The strip is not tappable; the stop control below it is what the user needs to press.
-            Text(SpeechLanguage.resolved() == .arabic ? "جاري التسجيل" : "Recording")
+            // The strip is not tappable; the stop control is what the user needs to press.
+            Text(isArabic ? "جاري التسجيل" : "Recording")
                 .font(.system(size: 11))
                 .foregroundStyle(Color(.secondaryLabel))
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(SomaColors.white, in: Capsule())
         .accessibilityElement(children: .combine)
     }
 
