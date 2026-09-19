@@ -197,7 +197,9 @@ struct SomaChatSurface: View {
             .animation(.spring(response: 0.38, dampingFraction: 0.86), value: session.isThinking)
         }
         .defaultScrollAnchor(.bottom)
-        .scrollDismissesKeyboard(.interactively)
+        // Only a deliberate drag dismisses it. Interactive mode was reading the list's own scroll to the
+        // newest message as a drag and closing the keyboard right after a send.
+        .scrollDismissesKeyboard(.immediately)
     }
 
     private var emptyState: some View {
@@ -414,9 +416,14 @@ struct SomaChatSurface: View {
 
     private func send() {
         guard !session.isThinking else { return }
+
         // The keyboard stays up: a conversation means asking the next thing without reopening it.
+        // Focus is restored twice, before the reply and again after it lands, so nothing the list does
+        // on its way to the newest message can leave the field dead.
+        isComposerFocused = true
         Task {
             await session.send(context: modelContext, subscription: subscriptionManager)
+            isComposerFocused = true
         }
     }
 

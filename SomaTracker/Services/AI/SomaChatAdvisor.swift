@@ -97,6 +97,7 @@ enum SomaChatAdvisor {
         Rules:
         1. Use ONLY the numbers given to you. Never invent a number, a goal, or a food the user has not eaten.
         2. Prefer what this person already eats. When one of Soma's own options fits what is left, suggest it and keep its numbers exactly as written.
+        2a. Any calorie or protein figure you write must be one of the numbers given to you. If you name a dish that is not in the list, describe it without numbers rather than estimating.
         3. Be practical: two or three specific dishes or snacks that fit the calories and protein left.
         4. If little is left, say so plainly and suggest something light. If protein is short, favour protein.
         5. Two to four short sentences. No headings, no bullet lists, no percentages.

@@ -26,10 +26,11 @@ enum SomaChatIntent: Equatable {
 enum SomaChatIntentClassifier {
     /// Words that talk about the user's own day rather than about a dish.
     private static let dayWords: Set<String> = [
-        "left", "remaining", "remain", "so", "far", "eaten", "ate", "consumed", "had", "today",
-        "goal", "target", "progress", "doing", "logged", "track",
+        "left", "remaining", "remain", "so", "far", "eaten", "ate", "eat", "eats", "eating", "consumed",
+        "had", "have", "having", "today", "day", "week", "month", "goal", "target", "progress", "doing",
+        "logged", "track",
         "باقي", "باقى", "باقية", "متبقي", "متبقى", "فاضل", "فاضلة", "النهاردة", "النهارده", "اليوم",
-        "هدف", "وصلت", "سجلت", "اكلت", "دخل"
+        "يوم", "أسبوع", "اسبوع", "شهر", "هدف", "وصلت", "سجلت", "اكلت", "شربت", "دخل"
     ]
 
     private static let questionWords: Set<String> = [
@@ -62,6 +63,19 @@ enum SomaChatIntentClassifier {
 
     /// Ordered phrases, because one of these words alone means something else.
     private static let advicePhrases: [[String]] = [["on", "track"]]
+
+    /// Nouns that ask about a dish rather than reporting one. "Burger info" was logged as a burger,
+    /// because a food word with no verb and no question mark looked like a log.
+    private static let infoWords: Set<String> = [
+        "info", "information", "details", "detail", "about", "nutrition", "macros", "breakdown",
+        "ingredients", "facts", "review", "معلومات", "تفاصيل", "مكونات", "عن"
+    ]
+
+    /// Verbs and nouns that report an actual meal, which is what makes a sentence a log.
+    private static let consumptionWords: Set<String> = [
+        "ate", "eat", "eaten", "eating", "had", "drank", "drink", "finished", "breakfast", "lunch", "dinner",
+        "اكلت", "شربت", "كلت", "فطرت", "اتغديت", "اتعشيت", "نهشت"
+    ]
 
     private static func contains(_ keyword: String, in tokens: Set<String>) -> Bool {
         if tokens.contains(keyword) { return true }
@@ -103,7 +117,17 @@ enum SomaChatIntentClassifier {
         // "log a burger" and "track 250 water" are requests to record, whatever else they contain.
         if !wantsAdvice, containsAny(loggingWords, in: tokenSet) { return .log }
 
-        let isQuestion = trimmed.hasSuffix("?") || wantsAdvice || containsAny(questionWords, in: tokenSet)
+        // A sentence that reports eating is a log, so it must not be read as a question just because it
+        // mentions calories. Water is the exception to the metric rule: "مية" on its own is the app's
+        // most common log, and asking about water always comes with a question word anyway.
+        let describesEating = containsAny(consumptionWords, in: tokenSet)
+        let namedMetric = metric(in: tokenSet)
+        let asksAboutFood = containsAny(infoWords, in: tokenSet) || (namedMetric != nil && namedMetric != .water)
+
+        let isQuestion = trimmed.hasSuffix("?")
+            || wantsAdvice
+            || containsAny(questionWords, in: tokenSet)
+            || (!describesEating && asksAboutFood)
 
         guard isQuestion else { return .log }
 
@@ -120,12 +144,15 @@ enum SomaChatIntentClassifier {
             return .status(metric)
         }
 
-        // A question with no metric and no advice wording is open, so the day's numbers are the answer.
-        if metric(in: tokenSet) == nil {
-            return .advice
-        }
+        // A question that names a dish gets its numbers, with the option to log it: first the app's own
+        // database decides, and failing that, wording like "burger info" or "كلمني عن البرجر" is a
+        // lookup as long as the question is not about the user's own day.
+        if namedMetric != nil { return .ask }
+        if FoodNutritionDatabase.shared.parseInput(trimmed).title != "No Food Detected" { return .ask }
+        if containsAny(infoWords, in: tokenSet), !containsAny(dayWords, in: tokenSet) { return .ask }
 
-        return .ask
+        // Otherwise it is open, and the day's numbers are the answer.
+        return .advice
     }
 
     private static func metric(in tokens: Set<String>) -> NutritionMetric? {
