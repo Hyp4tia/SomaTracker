@@ -30,14 +30,57 @@ enum AIEngineError: Error {
     case generationFailed(String)
 }
 
-enum OnDeviceAISettings {
-    /// Backs the settings toggle. With it off, analysis behaves exactly as it did before this
-    /// engine existed, which makes the whole feature reversible from the UI.
-    static let defaultsKey = "soma_on_device_ai"
+/// Who answers, and whether the cloud checks the answer. This used to be two switches,
+/// "on-device analysis" and "fact-check with the cloud", which described the same traffic once both
+/// were on: with either one, the cloud was involved in every log. One choice says it plainly.
+enum AnalysisMode: String, CaseIterable, Identifiable {
+    /// This iPhone answers, and the cloud model verifies what it said. The app's default.
+    case localFirst
+    /// The cloud answers everything. Nothing runs on this iPhone.
+    case cloudFirst
 
-    static var isEnabled: Bool {
-        UserDefaults.standard.object(forKey: defaultsKey) as? Bool ?? true
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .localFirst: return "On-device first"
+        case .cloudFirst: return "Cloud first"
+        }
     }
+
+    var detail: String {
+        switch self {
+        case .localFirst: return "Answered instantly on this iPhone, then checked by the cloud"
+        case .cloudFirst: return "Every log is answered by the cloud, nothing runs locally"
+        }
+    }
+}
+
+enum OnDeviceAISettings {
+    static let modeKey = "soma_analysis_mode"
+
+    /// What the mode used to be stored as, read once for an install that predates this screen.
+    private static let legacyOnDeviceKey = "soma_on_device_ai"
+
+    static var mode: AnalysisMode {
+        get {
+            if let raw = UserDefaults.standard.string(forKey: modeKey),
+               let stored = AnalysisMode(rawValue: raw) {
+                return stored
+            }
+            // Anyone who had turned on-device analysis off keeps cloud-first behaviour.
+            return UserDefaults.standard.object(forKey: legacyOnDeviceKey) as? Bool == false
+                ? .cloudFirst
+                : .localFirst
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: modeKey)
+        }
+    }
+
+    /// True when this iPhone answers first, which is also when the cloud has something to review.
+    /// Every call site reads this, so the mode is the single source of truth.
+    static var isEnabled: Bool { mode == .localFirst }
 
     /// Photos take the cloud route by default. Gemini reads a plate in about two seconds and reads
     /// it better; the on-device model takes longer and guesses. This switch is for the person who

@@ -12,13 +12,6 @@ import SwiftData
 
 @MainActor
 enum AIFactCheckService {
-    static let defaultsKey = "soma_fact_check"
-
-    /// The rule this exists for: the cloud is always the second opinion, so it defaults on.
-    static var isEnabled: Bool {
-        UserDefaults.standard.object(forKey: defaultsKey) as? Bool ?? true
-    }
-
     /// How far the cloud has to disagree before an entry is rewritten. Small gaps are noise, and
     /// rewriting on noise would be worse than leaving a good estimate alone.
     private static let calorieTolerance = 0.15
@@ -32,7 +25,9 @@ enum AIFactCheckService {
         aiEntry: AIMealEntry?,
         context: ModelContext
     ) async {
-        guard isEnabled, analysis.engine == .onDevice else { return }
+        // Local-first mode is the only mode with an on-device answer to review, and reviewing it is
+        // what the mode means, so there is no separate switch left to consult.
+        guard OnDeviceAISettings.isEnabled, analysis.engine == .onDevice else { return }
         guard APIConfiguration.shared.hasCloudVisionReady else { return }
         guard !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 

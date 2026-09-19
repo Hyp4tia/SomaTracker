@@ -10,8 +10,8 @@ import SwiftUI
 struct AISettingsDetailView: View {
     @State private var subscriptionManager = SubscriptionManager.shared
     @State private var showPaywall = false
-    @AppStorage(OnDeviceAISettings.defaultsKey) private var onDeviceAI = true
-    @AppStorage(AIFactCheckService.defaultsKey) private var factCheck = true
+    /// Empty until the user picks, so an install from before this screen keeps its old behaviour.
+    @AppStorage(OnDeviceAISettings.modeKey) private var storedModeRaw = ""
     @AppStorage(OnDeviceAISettings.photosOnDeviceKey) private var photosOnDevice = false
 
     var body: some View {
@@ -78,61 +78,48 @@ struct AISettingsDetailView: View {
                 Text("STATUS")
             }
 
-            // Section 2: Which engine answers
+            // Section 2: Which engine answers. One choice, because the two switches this replaced
+            // described the same traffic once both were on.
             Section {
-                Toggle(isOn: $onDeviceAI) {
-                    HStack(spacing: 14) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(SomaColors.iris)
-                                .frame(width: 32, height: 32)
+                HStack(spacing: 14) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(SomaColors.iris)
+                            .frame(width: 32, height: 32)
 
-                            Image(systemName: "cpu")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.white)
-                        }
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("On-device analysis")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color(.label))
-
-                            Text(engineStatusText)
-                                .font(.system(size: 13))
-                                .foregroundStyle(Color(.secondaryLabel))
-                        }
+                        Image(systemName: "cpu")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white)
                     }
-                    .padding(.vertical, 3)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Analysis engine")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color(.label))
+
+                        Text(analysisMode.detail)
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color(.secondaryLabel))
+                    }
                 }
+                .padding(.vertical, 3)
+
+                Picker("Analysis engine", selection: analysisModeBinding) {
+                    ForEach(AnalysisMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
                 .disabled(!OnDeviceAIService.isReady)
 
-                Toggle(isOn: $factCheck) {
-                    HStack(spacing: 14) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(SomaColors.emerald)
-                                .frame(width: 32, height: 32)
-
-                            Image(systemName: "checkmark.shield.fill")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.white)
-                        }
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Fact-check with the cloud")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color(.label))
-
-                            Text(factCheckStatusText)
-                                .font(.system(size: 13))
-                                .foregroundStyle(Color(.secondaryLabel))
-                        }
-                    }
-                    .padding(.vertical, 3)
+                if !OnDeviceAIService.isReady {
+                    Text(engineStatusText)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color(.secondaryLabel))
                 }
-                .disabled(!OnDeviceAIService.isReady || !onDeviceAI)
 
-                if OnDeviceAIService.isReady, OnDeviceAIService.supportsImageInput, onDeviceAI {
+                if OnDeviceAIService.isReady, OnDeviceAIService.supportsImageInput, analysisMode == .localFirst {
                     Toggle(isOn: $photosOnDevice) {
                         HStack(spacing: 14) {
                             ZStack {
@@ -163,7 +150,7 @@ struct AISettingsDetailView: View {
             } header: {
                 Text("ANALYSIS ENGINE")
             } footer: {
-                Text("Meals you describe by voice or text are estimated on this iPhone, so the answer is instant and your words stay on it. The cloud model is asked when the on-device answer needs more muscle, when it takes too long, and for every photo.")
+                Text("On-device first answers instantly on this iPhone and the cloud model checks the numbers after they are logged. Cloud first sends every log to the cloud and nothing runs locally.")
             }
 
             // Section 3: Siri & Action Button Shortcuts
@@ -256,17 +243,20 @@ struct AISettingsDetailView: View {
         "Hey Siri, what's my streak in Soma"
     ]
 
-    private var factCheckStatusText: String {
-        guard onDeviceAI else { return "Paused while on-device analysis is off" }
-        return factCheck
-            ? "Every on-device answer is verified after it is logged"
-            : "Off, on-device answers are final"
+    private var analysisMode: AnalysisMode {
+        AnalysisMode(rawValue: storedModeRaw) ?? OnDeviceAISettings.mode
     }
 
+    private var analysisModeBinding: Binding<AnalysisMode> {
+        Binding(get: { analysisMode }, set: { storedModeRaw = $0.rawValue })
+    }
+
+    /// Shown under the picker only when this iPhone cannot run the local model, so the disabled
+    /// option is explained rather than silent.
     private var engineStatusText: String {
         switch OnDeviceAIService.status {
         case .ready:
-            return onDeviceAI ? "First choice, cloud as the second opinion" : "Off, everything goes to the cloud"
+            return analysisMode.detail
         case .needsNewerSystem:
             return "Needs iOS 26 or later"
         case .languageUnsupported(let reason):
