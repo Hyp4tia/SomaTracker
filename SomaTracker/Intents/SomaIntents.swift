@@ -64,7 +64,7 @@ struct LogWaterAppIntent: AppIntent {
 
         // Donated so Siri can learn that these words lead to a real log, which is what lets it
         // offer Soma for the same phrase later.
-        _ = _ = try? await donate()
+        _ = try? await donate()
 
         return .result(
             value: "Logged \(targetML) ml",
@@ -128,7 +128,7 @@ struct LogMealAppIntent: AppIntent {
 
             // Donated so Siri can learn that these words lead to a real log, which is what lets it
             // offer Soma for the same phrase later.
-            _ = _ = try? await donate()
+            _ = try? await donate()
 
             return .result(
                 value: "Logged \(waterCheck.waterML) ml",
@@ -166,7 +166,7 @@ struct LogMealAppIntent: AppIntent {
 
             // Donated so Siri can learn that these words lead to a real log, which is what lets it
             // offer Soma for the same phrase later.
-            _ = _ = try? await donate()
+            _ = try? await donate()
 
             return .result(
                 value: "Logged \(analysis.waterML) ml",
@@ -202,8 +202,6 @@ struct LogMealAppIntent: AppIntent {
         aiEntry.dailyLog = todayLog
         context.insert(aiEntry)
 
-        SubscriptionManager.shared.consumeFreeScanIfFreeUser()
-
         // A log can name a drink and a meal in one breath. The water rides along in the same save.
         if let water = WaterEntry.loggedWithMeal(analysis.waterML, linkedTo: aiEntryId) {
             todayLog.waterEntries.append(water)
@@ -217,11 +215,15 @@ struct LogMealAppIntent: AppIntent {
                 dialog: "Soma couldn't save that. Please try again."
             )
         }
+
+        // Spent only now, with the entry stored. Spending it before the save charged the user a scan
+        // for a log the app then failed to keep.
+        SubscriptionManager.shared.consumeFreeScanIfFreeUser()
         await HealthSyncService.shared.syncDay(todayLog)
 
         // Donated so Siri can learn that these words lead to a real log, which is what lets it
         // offer Soma for the same phrase later.
-        _ = _ = try? await donate()
+        _ = try? await donate()
 
         // Siri's own answers go to the cloud for review too. The task may be cut short if iOS tears
         // the process down right after replying, which costs nothing: the entry already stands.
