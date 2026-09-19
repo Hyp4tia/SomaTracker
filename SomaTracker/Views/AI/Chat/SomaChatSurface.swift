@@ -32,9 +32,11 @@ struct SomaChatSurface: View {
         VStack(spacing: 0) {
             header
             messageList
-                // As a bottom inset of the scroll view the composer rides above the keyboard, which is
-                // what a chat is expected to do.
-                .safeAreaInset(edge: .bottom, spacing: 0) { composer }
+            // A plain sibling, deliberately. As a bottom inset of the scroll view it was rebuilt every
+            // time the list's content changed, which is every send, and a rebuilt text field cannot hold
+            // focus. The keyboard is kept away from it by the VStack respecting the keyboard's safe area,
+            // not by anything in this file.
+            composer
         }
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         // The surface bleeds to the physical bottom edge while its content stays inside the safe
@@ -181,10 +183,7 @@ struct SomaChatSurface: View {
                             await session.log(message: message, context: modelContext, subscription: subscriptionManager)
                         }
                     }
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .bottom).combined(with: .opacity),
-                            removal: .opacity
-                        ))
+                        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .bottom)))
                 }
 
                 if session.isThinking { thinkingRow }
@@ -195,9 +194,10 @@ struct SomaChatSurface: View {
             .animation(.spring(response: 0.38, dampingFraction: 0.86), value: session.isThinking)
         }
         .defaultScrollAnchor(.bottom)
-        // Only a deliberate drag dismisses it. Interactive mode was reading the list's own scroll to the
-        // newest message as a drag and closing the keyboard right after a send.
-        .scrollDismissesKeyboard(.immediately)
+        // Neither interactive nor immediate dismissal: both close the keyboard on a scroll, and this
+        // list scrolls itself to the newest message on every send. The conversation is meant to be typed
+        // in, so the keyboard now only leaves when the user leaves the chat.
+        .scrollDismissesKeyboard(.never)
     }
 
     private var emptyState: some View {
@@ -414,13 +414,12 @@ struct SomaChatSurface: View {
     private func send() {
         guard !session.isThinking else { return }
 
-        // The keyboard stays up: a conversation means asking the next thing without reopening it.
-        // Focus is restored twice, before the reply and again after it lands, so nothing the list does
-        // on its way to the newest message can leave the field dead.
+        // A conversation means asking the next thing without reopening the keyboard. Nothing in this
+        // file dismisses it any more, so this assignment is a no-op that costs nothing; it is here only
+        // so that a future dismissal shows up as a bug rather than as silent focus loss.
         isComposerFocused = true
         Task {
             await session.send(context: modelContext, subscription: subscriptionManager)
-            isComposerFocused = true
         }
     }
 
