@@ -42,6 +42,14 @@ final class WaterEntry {
 }
 
 extension WaterEntry {
+    /// The water half of a log that named both a drink and a meal ("شربت خمسة لتر موية وأكلت...").
+    /// It rides along in the meal's own save, so one utterance fills both trackers in one write.
+    static func loggedWithMeal(_ millilitres: Int, linkedTo entryId: UUID) -> WaterEntry? {
+        let amount = min(millilitres, 5_000)
+        guard amount > 0 else { return nil }
+        return WaterEntry(amount: amount, timestamp: .now, label: "Soma AI", aiMealEntryId: entryId)
+    }
+
     /// Deletes the water entry from its daily log and cleans up any linked AIMealEntry & audio file.
     func deleteWithSyncedAIEntry(from log: DailyLog?, in context: ModelContext) {
         log?.waterEntries.removeAll { $0.id == self.id }

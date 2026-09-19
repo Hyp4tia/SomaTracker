@@ -204,6 +204,11 @@ struct LogMealAppIntent: AppIntent {
 
         SubscriptionManager.shared.consumeFreeScanIfFreeUser()
 
+        // A log can name a drink and a meal in one breath. The water rides along in the same save.
+        if let water = WaterEntry.loggedWithMeal(analysis.waterML, linkedTo: aiEntryId) {
+            todayLog.waterEntries.append(water)
+        }
+
         do {
             try context.save()
         } catch {

@@ -715,6 +715,12 @@ struct AIView: View {
                     aiEntry.dailyLog = todayLog
                     modelContext.insert(aiEntry)
 
+                    // A log can name a drink and a meal in one breath. The water rides along in the
+                    // same save, so the meal never costs it.
+                    if let water = WaterEntry.loggedWithMeal(analysis.waterML, linkedTo: aiEntryId) {
+                        todayLog.waterEntries.append(water)
+                    }
+
                     let saved = persistContext()
                     if saved { subscriptionManager.consumeFreeScanIfFreeUser() }
                     withAnimation(.snappy(duration: 0.35)) {
@@ -887,6 +893,12 @@ struct AIView: View {
                 aiEntry.dailyLog = todayLog
                 modelContext.insert(aiEntry)
 
+                // A log can name a drink and a meal in one breath. The water rides along in the
+                // same save, so the meal never costs it.
+                if let water = WaterEntry.loggedWithMeal(analysis.waterML, linkedTo: aiEntryId) {
+                    todayLog.waterEntries.append(water)
+                }
+
                 let saved = persistContext()
                 if saved { subscriptionManager.consumeFreeScanIfFreeUser() }
                 withAnimation(.snappy(duration: 0.35)) {
@@ -1006,6 +1018,12 @@ struct AIView: View {
                 )
                 aiEntry.dailyLog = todayLog
                 modelContext.insert(aiEntry)
+
+                // A log can name a drink and a meal in one breath. The water rides along in the
+                // same save, so the meal never costs it.
+                if let water = WaterEntry.loggedWithMeal(analysis.waterML, linkedTo: aiEntryId) {
+                    todayLog.waterEntries.append(water)
+                }
 
                 let saved = persistContext()
                 if saved { subscriptionManager.consumeFreeScanIfFreeUser() }

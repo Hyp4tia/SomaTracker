@@ -134,7 +134,13 @@ struct AIMealAnalysisResult: Codable {
     let items: [AIFoodItemBreakdown]
 
     /// True when the engines recognised a water log rather than a meal.
-    var isWaterLog: Bool { waterML > 0 }
+    ///
+    /// A log can name both ("شربت خمسة لتر موية وأكلت أربع بيضات..."), and the engines answer those
+    /// with the meal and the water amount together. Reading `waterML > 0` alone as "this is water"
+    /// threw that whole meal away, so the water only counts as the log when nothing came with it.
+    var isWaterLog: Bool {
+        waterML > 0 && calories == 0 && proteinG == 0 && carbsG == 0 && fatG == 0
+    }
 
     var isNoFood: Bool {
         // Water has no calories and no items, which used to read as "nothing was logged".
