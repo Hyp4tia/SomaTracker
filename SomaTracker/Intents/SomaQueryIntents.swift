@@ -17,6 +17,7 @@ enum NutritionMetric: String, AppEnum {
     case protein
     case water
     case steps
+    case summary
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation = "Nutrition Metric"
 
@@ -24,7 +25,8 @@ enum NutritionMetric: String, AppEnum {
         .calories: "Calories",
         .protein: "Protein",
         .water: "Water",
-        .steps: "Steps"
+        .steps: "Steps",
+        .summary: "Everything"
     ]
 }
 
@@ -62,10 +64,13 @@ private struct SomaToday {
             guard consumed > 0 else {
                 return "Nothing logged yet today. Your goal is \(calorieGoal.formatted()) kcal."
             }
-            let remaining = max(0, calorieGoal - consumed)
-            return remaining == 0
-                ? "You've reached your \(calorieGoal.formatted()) kcal goal, with \(consumed.formatted()) consumed."
-                : "\(remaining.formatted()) kcal left today. \(consumed.formatted()) of \(calorieGoal.formatted()) consumed."
+            // Consumed first: "how many calories did I eat" and "how many do I have left" are the
+            // same question from two sides, and one answer carries both.
+            let remaining = calorieGoal - consumed
+            if remaining < 0 {
+                return "You've eaten \(consumed.formatted()) kcal today, \((-remaining).formatted()) past your \(calorieGoal.formatted()) kcal goal."
+            }
+            return "You've eaten \(consumed.formatted()) of your \(calorieGoal.formatted()) kcal goal today, \(remaining.formatted()) left."
 
         case .protein:
             let consumed = Int((log?.totalProtein ?? 0).rounded())
@@ -80,6 +85,18 @@ private struct SomaToday {
 
         case .steps:
             return "\((log?.steps ?? 0).formatted()) of \(stepGoal.formatted()) steps today."
+
+        case .summary:
+            let consumed = log?.totalCalories ?? 0
+            guard consumed > 0 else {
+                return "Nothing logged yet today. Your goal is \(calorieGoal.formatted()) kcal."
+            }
+            let protein = Int((log?.totalProtein ?? 0).rounded())
+            let system = SomaToday.unitSystem
+            let water = Units.waterValue(ml: log?.totalWater ?? 0, system: system)
+            let unit = Units.waterUnit(system)
+            let remaining = max(0, calorieGoal - consumed)
+            return "Today: \(consumed.formatted()) of \(calorieGoal.formatted()) kcal, \(protein) grams of protein, and \(water.formatted()) \(unit) of water. \(remaining.formatted()) kcal left."
         }
     }
 
@@ -105,6 +122,20 @@ struct GetDailyNutritionIntent: AppIntent {
     func perform() async throws -> some ProvidesDialog & ReturnsValue<String> {
         let today = SomaToday(context: SomaPersistence.shared.mainContext)
         let answer = today.answer(for: metric)
+        return .result(value: answer, dialog: IntentDialog(stringLiteral: answer))
+    }
+}
+
+/// Its own intent rather than a metric value: Siri can bind an enum parameter only from a spoken
+/// phrase it recognises, so "how is my day" would have no reliable way to select a summary.
+struct GetDailySummaryIntent: AppIntent {
+    static var title: LocalizedStringResource = "Check My Whole Day in Soma"
+    static var description = IntentDescription("Reports calories, protein and water for today in one answer.")
+
+    @MainActor
+    func perform() async throws -> some ProvidesDialog & ReturnsValue<String> {
+        let today = SomaToday(context: SomaPersistence.shared.mainContext)
+        let answer = today.answer(for: .summary)
         return .result(value: answer, dialog: IntentDialog(stringLiteral: answer))
     }
 }

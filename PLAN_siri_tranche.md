@@ -18,7 +18,12 @@ order, with the undo intent dropped deliberately and defensive app-attest work l
 - Both are pure reads over the same models the app writes, through `SomaPersistence.shared`, so a
   Siri answer can never disagree with the screen and can never modify data.
 - Registered in `SomaShortcuts` with phrases that carry the app name, which is what Apple requires
-  for a shortcut to be invocable by voice.
+  for a shortcut to be invocable by voice. Consumption questions ("how many calories did I eat")
+  and remaining questions are the same intent: one answer carries both numbers.
+- `GetDailySummaryIntent` exists as its own intent rather than a metric value, because Siri can only
+  bind an enum parameter from a phrase it recognises, so "how is my day" could never select one.
+- Budget note: Apple caps an app at 10 App Shortcuts. Soma registers 7 after this batch, so batches
+  3 and 4 may add at most three more.
 - Unit system respected: water answers follow the user's metric or imperial setting.
 
 ## Batch 2: addressable meals (next)

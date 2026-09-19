@@ -62,11 +62,28 @@ struct SomaShortcuts: AppShortcutsProvider {
                 "Check \(.applicationName) for today",
                 "How much \(\.$metric) do I have left in \(.applicationName)",
                 "How many calories left in \(.applicationName)",
+                "How many calories did I eat in \(.applicationName)",
+                "How many calories have I eaten in \(.applicationName)",
+                "How many calories did I consume in \(.applicationName)",
+                "How much did I eat in \(.applicationName)",
+                "How much have I had in \(.applicationName)",
                 "How much water have I had in \(.applicationName)",
                 "How many steps in \(.applicationName)"
             ],
             shortTitle: "Check Today",
             systemImageName: "chart.pie.fill"
+        )
+
+        AppShortcut(
+            intent: GetDailySummaryIntent(),
+            phrases: [
+                "How is my day in \(.applicationName)",
+                "How am I doing in \(.applicationName)",
+                "What have I eaten today in \(.applicationName)",
+                "Give me my \(.applicationName) summary"
+            ],
+            shortTitle: "Check My Day",
+            systemImageName: "chart.bar.fill"
         )
 
         AppShortcut(
