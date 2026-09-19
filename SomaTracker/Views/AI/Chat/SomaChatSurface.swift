@@ -23,6 +23,8 @@ struct SomaChatSurface: View {
     @State private var showCamera = false
     @State private var capturedImage: UIImage?
     @State private var showMicAlert = false
+    /// Today's numbers, shown under the title so the chat is never blind to the day it is about.
+    @State private var daySummary = ""
 
     @FocusState private var isComposerFocused: Bool
 
@@ -62,11 +64,15 @@ struct SomaChatSurface: View {
             TabBarCoordinator.setTabBarVisible(true)
         }
         .onAppear {
+            refreshDaySummary()
             // The conversation opens ready to type: asking for the keyboard after the rise animation
             // avoids fighting it for the same frames.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 isComposerFocused = true
             }
+        }
+        .onChange(of: session.messages.count) { _, _ in
+            refreshDaySummary()
         }
         .alert("Microphone Access Required", isPresented: $showMicAlert) {
             Button("Open Settings") {
@@ -103,6 +109,7 @@ struct SomaChatSurface: View {
                         .font(.system(size: 12))
                         .foregroundStyle(Color(.secondaryLabel))
                         .lineLimit(1)
+                        .contentTransition(.numericText())
                 }
 
                 Spacer(minLength: 0)
@@ -149,9 +156,18 @@ struct SomaChatSurface: View {
     }
 
     private var subtitle: String {
-        session.isThinking
-            ? session.thinkingLabel
-            : (SpeechLanguage.resolved() == .arabic ? "اسألني عن يومك أو سجّل وجبتك" : "Ask about your day, or log a meal")
+        if session.isThinking { return session.thinkingLabel }
+        if !daySummary.isEmpty { return daySummary }
+        return SpeechLanguage.resolved() == .arabic
+            ? "اسألني عن يومك أو سجّل وجبتك"
+            : "Ask about your day, or log a meal"
+    }
+
+    private func refreshDaySummary() {
+        let summary = SomaToday(context: modelContext).compactSummary
+        withAnimation(.snappy(duration: 0.25)) {
+            daySummary = summary
+        }
     }
 
     // MARK: - Messages
@@ -201,12 +217,10 @@ struct SomaChatSurface: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(SomaColors.white)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(SomaColors.navy.opacity(0.07), lineWidth: 1)
-        )
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 2)
     }
 
     private var thinkingRow: some View {
@@ -225,11 +239,8 @@ struct SomaChatSurface: View {
             }
             .padding(14)
             .background(SomaColors.white)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(SomaColors.navy.opacity(0.07), lineWidth: 1)
-            )
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 2)
 
             Spacer(minLength: 46)
         }
@@ -403,7 +414,7 @@ struct SomaChatSurface: View {
 
     private func send() {
         guard !session.isThinking else { return }
-        isComposerFocused = false
+        // The keyboard stays up: a conversation means asking the next thing without reopening it.
         Task {
             await session.send(context: modelContext, subscription: subscriptionManager)
         }

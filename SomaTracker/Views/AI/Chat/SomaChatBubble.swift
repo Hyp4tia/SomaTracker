@@ -2,8 +2,8 @@
 //  SomaChatBubble.swift
 //  SomaTracker
 //
-//  One message, drawn. Soma's replies carry the same numbers and the same colour language as the
-//  journal card, so the chat never looks like a second opinion about the user's own log.
+//  One message, drawn. Soma's replies carry the same numbers, the same palette and the same card
+//  treatment as the journal, so the chat never reads as a second opinion about the user's own log.
 //
 
 import SwiftUI
@@ -15,14 +15,20 @@ struct SomaChatBubble: View {
 
     @State private var player = AudioPlaybackService()
 
+    /// Wide enough for two metric chips side by side at the largest text size Soma uses.
+    private let cardWidth: CGFloat = 330
+
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            if message.author == .user { Spacer(minLength: 46) }
+            if message.author == .user { Spacer(minLength: 40) }
 
             bubble
-                .frame(maxWidth: 320, alignment: message.author == .user ? .trailing : .leading)
+                .frame(
+                    maxWidth: message.kind == .analysis || message.kind == .answer ? cardWidth : 300,
+                    alignment: message.author == .user ? .trailing : .leading
+                )
 
-            if message.author == .soma { Spacer(minLength: 46) }
+            if message.author == .soma { Spacer(minLength: 40) }
         }
     }
 
@@ -115,11 +121,12 @@ struct SomaChatBubble: View {
     // MARK: - Soma
 
     private var analysisCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(message.title)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color(.label))
+                    .fixedSize(horizontal: false, vertical: true)
 
                 if !message.location.isEmpty {
                     HStack(spacing: 4) {
@@ -133,75 +140,84 @@ struct SomaChatBubble: View {
                 }
             }
 
-            if message.waterML > 0 {
-                chip(icon: "drop.fill", color: SomaColors.aqua, value: "\(message.waterML)", unit: "ml")
-            } else {
-                HStack(spacing: 8) {
-                    chip(icon: "flame.fill", color: SomaColors.coral, value: message.calories.formatted(), unit: "kcal")
-                    chip(icon: "bolt.fill", color: SomaColors.iris, value: "\(Int(message.proteinG.rounded()))", unit: "g P")
-                    chip(icon: "circle.hexagongrid.fill", color: SomaColors.amber, value: "\(Int(message.carbsG.rounded()))", unit: "g C")
-                    chip(icon: "drop.degreesign.fill", color: SomaColors.teal, value: "\(Int(message.fatG.rounded()))", unit: "g F")
-                }
-            }
+            metrics
 
             if !message.text.isEmpty {
                 Text(message.text)
                     .font(.system(size: 13))
                     .foregroundStyle(Color(.secondaryLabel))
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if !message.sources.isEmpty { sourceLinks }
 
             if message.isLogged {
                 Label("Added to your journal", systemImage: "checkmark.circle.fill")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(SomaColors.emerald)
             } else {
                 Button {
                     onLog?()
                 } label: {
-                    Label("Log this", systemImage: "plus.circle.fill")
-                        .font(.system(size: 12, weight: .semibold))
+                    Label("Log this", systemImage: "plus")
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
                         .background(SomaColors.navy)
                         .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(14)
+        .padding(15)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(SomaColors.white)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(SomaColors.navy.opacity(0.07), lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.03), radius: 8, x: 0, y: 3)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 2)
+    }
+
+    /// Two rows of two, so a four-digit calorie count always has room. The single line this replaced
+    /// truncated the numbers themselves, which is the one thing a food card cannot do.
+    @ViewBuilder
+    private var metrics: some View {
+        if message.waterML > 0 {
+            chip(icon: "drop.fill", color: SomaColors.aqua, value: message.waterML.formatted(), unit: "ml")
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    chip(icon: "flame.fill", color: SomaColors.coral, value: message.calories.formatted(), unit: "kcal")
+                    chip(icon: "bolt.fill", color: SomaColors.iris, value: "\(Int(message.proteinG.rounded()))", unit: "g protein")
+                }
+                HStack(spacing: 8) {
+                    chip(icon: "circle.hexagongrid.fill", color: SomaColors.amber, value: "\(Int(message.carbsG.rounded()))", unit: "g carbs")
+                    chip(icon: "drop.degreesign.fill", color: SomaColors.teal, value: "\(Int(message.fatG.rounded()))", unit: "g fat")
+                }
+            }
+        }
     }
 
     private var answerCard: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(message.text)
-            .font(.system(size: 15))
-            .foregroundStyle(Color(.label))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .background(SomaColors.white)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(SomaColors.navy.opacity(0.07), lineWidth: 1)
-            )
+                .font(.system(size: 15))
+                .foregroundStyle(Color(.label))
+                .fixedSize(horizontal: false, vertical: true)
 
             if !message.sources.isEmpty { sourceLinks }
         }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 13)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(SomaColors.white)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 2)
     }
 
     /// Where a searched answer came from. Tappable, and small: it is evidence, not the answer.
     private var sourceLinks: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 5) {
             ForEach(message.sources.prefix(3)) { source in
                 Link(destination: source.url) {
                     HStack(spacing: 5) {
@@ -211,7 +227,7 @@ struct SomaChatBubble: View {
                             .font(.system(size: 11))
                             .lineLimit(1)
                     }
-                    .foregroundStyle(SomaColors.navy.opacity(0.75))
+                    .foregroundStyle(SomaColors.navy.opacity(0.7))
                 }
             }
         }
@@ -226,31 +242,37 @@ struct SomaChatBubble: View {
             Text(message.text)
                 .font(.system(size: 14))
                 .foregroundStyle(Color(.label))
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(SomaColors.streakOrange.opacity(0.10))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private func chip(icon: String, color: Color, value: String, unit: String) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             Image(systemName: icon)
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(color)
 
             Text(value)
-                .font(.system(size: 13, weight: .bold))
+                .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(Color(.label))
+                .lineLimit(1)
 
             Text(unit)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(Color(.secondaryLabel))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(color.opacity(0.10))
-        .clipShape(Capsule())
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     // MARK: - Voice playback

@@ -103,6 +103,27 @@ struct SomaToday {
         }
     }
 
+    /// One line of today's numbers, for the chat header. Siri gets the full sentence; the chat only has
+    /// room for the two that matter most.
+    var compactSummary: String {
+        let consumed = log?.totalCalories ?? 0
+        let remaining = calorieGoal - consumed
+        let proteinLeft = max(0, proteinGoal - Int((log?.totalProtein ?? 0).rounded()))
+
+        if consumed == 0 {
+            return SpeechLanguage.resolved() == .arabic ? "لسه مفيش حاجة متسجلة النهاردة" : "Nothing logged today yet"
+        }
+
+        if SpeechLanguage.resolved() == .arabic {
+            return remaining >= 0
+                ? "باقي \(remaining.formatted()) كالوري · \(proteinLeft) جرام بروتين"
+                : "عدّيت هدفك بـ \((-remaining).formatted()) كالوري · \(proteinLeft) جرام بروتين باقي"
+        }
+        return remaining >= 0
+            ? "\(remaining.formatted()) kcal left · \(proteinLeft) g protein left"
+            : "\((-remaining).formatted()) kcal over · \(proteinLeft) g protein left"
+    }
+
     /// The same words the Siri intent answers with, so a spoken answer and a typed one cannot disagree.
     static func streakAnswer(context: ModelContext) -> String {
         let logs = (try? context.fetch(FetchDescriptor<DailyLog>())) ?? []
