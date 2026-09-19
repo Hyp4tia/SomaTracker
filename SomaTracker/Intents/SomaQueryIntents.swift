@@ -9,6 +9,9 @@
 import AppIntents
 import Foundation
 import SwiftData
+// The result builders that attach a view to an intent live in this glue module, and SwiftUI does not
+// re-export it, so a snippet-returning intent has to name it.
+import _AppIntents_SwiftUI
 
 /// The metrics Soma can report on. One parameter keeps the intent list short while Siri still
 /// understands "how much water" and "how many steps" as the same question with a different meter.
@@ -100,6 +103,22 @@ private struct SomaToday {
         }
     }
 
+    /// The same numbers the spoken answer is built from, so the card and the dialog cannot disagree.
+    var daySnippet: SomaDaySnippetView {
+        let system = SomaToday.unitSystem
+        return SomaDaySnippetView(
+            calories: log?.totalCalories ?? 0,
+            calorieGoal: calorieGoal,
+            protein: log?.totalProtein ?? 0,
+            proteinGoal: Double(proteinGoal),
+            water: Units.waterValue(ml: log?.totalWater ?? 0, system: system),
+            waterGoal: Units.waterValue(ml: waterGoalML, system: system),
+            waterUnit: Units.waterUnit(system),
+            steps: log?.steps ?? 0,
+            stepGoal: stepGoal
+        )
+    }
+
     /// The stored preference the views read too, so spoken and printed units match.
     static var unitSystem: UnitSystem {
         let stored = UserDefaults.standard.string(forKey: Units.storageKey)
@@ -119,10 +138,10 @@ struct GetDailyNutritionIntent: AppIntent {
     }
 
     @MainActor
-    func perform() async throws -> some ProvidesDialog & ReturnsValue<String> {
+    func perform() async throws -> some ProvidesDialog & ReturnsValue<String> & ShowsSnippetView {
         let today = SomaToday(context: SomaPersistence.shared.mainContext)
         let answer = today.answer(for: metric)
-        return .result(value: answer, dialog: IntentDialog(stringLiteral: answer))
+        return .result(value: answer, dialog: IntentDialog(stringLiteral: answer), view: today.daySnippet)
     }
 }
 
@@ -133,10 +152,10 @@ struct GetDailySummaryIntent: AppIntent {
     static var description = IntentDescription("Reports calories, protein and water for today in one answer.")
 
     @MainActor
-    func perform() async throws -> some ProvidesDialog & ReturnsValue<String> {
+    func perform() async throws -> some ProvidesDialog & ReturnsValue<String> & ShowsSnippetView {
         let today = SomaToday(context: SomaPersistence.shared.mainContext)
         let answer = today.answer(for: .summary)
-        return .result(value: answer, dialog: IntentDialog(stringLiteral: answer))
+        return .result(value: answer, dialog: IntentDialog(stringLiteral: answer), view: today.daySnippet)
     }
 }
 
@@ -145,7 +164,7 @@ struct GetStreakStatusIntent: AppIntent {
     static var description = IntentDescription("Reports your current streak and whether today is logged yet.")
 
     @MainActor
-    func perform() async throws -> some ProvidesDialog & ReturnsValue<String> {
+    func perform() async throws -> some ProvidesDialog & ReturnsValue<String> & ShowsSnippetView {
         let context = SomaPersistence.shared.mainContext
         let logs = (try? context.fetch(FetchDescriptor<DailyLog>())) ?? []
         let streak = StreakCalculator.calculate(from: logs)
@@ -159,6 +178,14 @@ struct GetStreakStatusIntent: AppIntent {
             answer = "Your streak is \(streak.currentStreak) days. Nothing logged today yet."
         }
 
-        return .result(value: answer, dialog: IntentDialog(stringLiteral: answer))
+        return .result(
+            value: answer,
+            dialog: IntentDialog(stringLiteral: answer),
+            view: SomaStreakSnippetView(
+                current: streak.currentStreak,
+                best: streak.bestStreak,
+                loggedToday: streak.hasLoggedToday
+            )
+        )
     }
 }

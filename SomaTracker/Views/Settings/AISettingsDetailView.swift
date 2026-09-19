@@ -164,7 +164,29 @@ struct AISettingsDetailView: View {
                 Text("Works directly through Siri, Shortcuts, and the iPhone Action Button.")
             }
 
-            // Section 3: Privacy & Security
+            // Section 3: the phrases Soma actually registers, so this screen cannot promise something
+            // Siri will not answer. They mirror SomaShortcuts.
+            Section {
+                ForEach(Self.siriPhrases, id: \.self) { phrase in
+                    HStack(spacing: 10) {
+                        Image(systemName: "quote.opening")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(SomaColors.navy.opacity(0.4))
+                            .frame(width: 16)
+
+                        Text(phrase)
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color(.label))
+                    }
+                    .padding(.vertical, 1)
+                }
+            } header: {
+                Text("TRY SAYING")
+            } footer: {
+                Text("Ask Siri out loud or type it, or run any of them from the Shortcuts app.")
+            }
+
+            // Section 4: Privacy & Security
             Section {
                 featureRow(
                     icon: "lock.shield.fill",
@@ -193,6 +215,16 @@ struct AISettingsDetailView: View {
             SomaPaywallView()
         }
     }
+
+    private static let siriPhrases = [
+        "Hey Siri, log 250 water with Soma",
+        "Hey Siri, log a chicken shawarma in Soma",
+        "Hey Siri, scan food with Soma",
+        "Hey Siri, how many calories did I eat in Soma",
+        "Hey Siri, how much protein do I have left in Soma",
+        "Hey Siri, how is my day in Soma",
+        "Hey Siri, what's my streak in Soma"
+    ]
 
     private var factCheckStatusText: String {
         guard onDeviceAI else { return "Paused while on-device analysis is off" }

@@ -62,6 +62,10 @@ struct LogWaterAppIntent: AppIntent {
         }
         await HealthSyncService.shared.syncDay(todayLog)
 
+        // Donated so Siri can learn that these words lead to a real log, which is what lets it
+        // offer Soma for the same phrase later.
+        _ = _ = try? await donate()
+
         return .result(
             value: "Logged \(targetML) ml",
             dialog: "Added \(targetML) ml of water to your daily hydration in Soma."
@@ -122,6 +126,10 @@ struct LogMealAppIntent: AppIntent {
             }
             await HealthSyncService.shared.syncDay(todayLog)
 
+            // Donated so Siri can learn that these words lead to a real log, which is what lets it
+            // offer Soma for the same phrase later.
+            _ = _ = try? await donate()
+
             return .result(
                 value: "Logged \(waterCheck.waterML) ml",
                 dialog: "Added \(waterCheck.waterML) ml of water to your daily hydration in Soma."
@@ -155,6 +163,10 @@ struct LogMealAppIntent: AppIntent {
                 )
             }
             await HealthSyncService.shared.syncDay(todayLog)
+
+            // Donated so Siri can learn that these words lead to a real log, which is what lets it
+            // offer Soma for the same phrase later.
+            _ = _ = try? await donate()
 
             return .result(
                 value: "Logged \(analysis.waterML) ml",
@@ -201,6 +213,22 @@ struct LogMealAppIntent: AppIntent {
             )
         }
         await HealthSyncService.shared.syncDay(todayLog)
+
+        // Donated so Siri can learn that these words lead to a real log, which is what lets it
+        // offer Soma for the same phrase later.
+        _ = _ = try? await donate()
+
+        // Siri's own answers go to the cloud for review too. The task may be cut short if iOS tears
+        // the process down right after replying, which costs nothing: the entry already stands.
+        Task {
+            await AIFactCheckService.review(
+                input: item,
+                analysis: analysis,
+                foodEntry: foodEntry,
+                aiEntry: aiEntry,
+                context: context
+            )
+        }
 
         return .result(
             value: "Logged \(analysis.title)",
