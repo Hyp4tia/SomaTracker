@@ -32,9 +32,13 @@ struct SomaChatSurface: View {
             messageList
             composer
         }
-        .background(Color(.systemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .ignoresSafeArea(edges: .bottom)
+        // The surface bleeds to the physical bottom edge while its content stays inside the safe
+        // area, so the composer never sits in the home-indicator zone.
+        .background(
+            Color(.systemGroupedBackground)
+                .ignoresSafeArea(edges: .bottom)
+        )
         .hideTabBarWithCoordinator()
         .photosPicker(isPresented: $showLibrary, selection: $session.pickerItems, maxSelectionCount: 5, matching: .images)
         .fullScreenCover(isPresented: $showCamera) {
