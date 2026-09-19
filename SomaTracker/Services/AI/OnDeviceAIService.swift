@@ -173,38 +173,6 @@ final class OnDeviceAIService: AIServiceProtocol {
         return Locale.current.localizedString(forLanguageCode: code) ?? code
     }
 
-    /// How long a written answer may take. Advice reads more than a log does, so it gets a little longer
-    /// than the 2.5s a meal estimate is allowed.
-    private let answerDeadline: TimeInterval = 8
-
-    /// A written answer for the chat's advice questions: no schema, the model's own words, and only the
-    /// numbers it was handed. Returns nil when this device cannot answer, so the caller escalates.
-    func answer(question: String, digest: String, outputLanguage: SpeechLanguage) async -> String? {
-        guard #available(iOS 26.0, *) else { return nil }
-        guard case .available = SystemLanguageModel.default.availability else { return nil }
-        guard Self.canRead(question) else { return nil }
-
-        // The local model cannot search, so its instructions say so plainly.
-        let instructions = SomaChatAdvisor.instruction(for: outputLanguage, webSearch: false)
-        let prompt = "\(digest)\n\nThe user asks: \(question)"
-        let budget = answerDeadline
-
-        return await withTaskGroup(of: String?.self) { group in
-            group.addTask {
-                let session = LanguageModelSession(instructions: instructions)
-                guard let response = try? await session.respond(to: prompt) else { return nil }
-                let text = response.content.trimmingCharacters(in: .whitespacesAndNewlines)
-                return text.isEmpty ? nil : text
-            }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: UInt64(budget * 1_000_000_000))
-                return nil
-            }
-            defer { group.cancelAll() }
-            return await group.next() ?? nil
-        }
-    }
-
     // MARK: - Analysis
 
     func analyze(
@@ -272,15 +240,8 @@ final class OnDeviceAIService: AIServiceProtocol {
     /// prompt can throw LanguageModelError.unsupportedLanguageOrLocale. Skipping the attempt keeps
     /// that failure out of the user's way and sends the log straight to the cloud instead. The check
     /// reads the model's own language list, so the day Arabic is added this starts working by itself.
-    /// Whether the local model reads this text at all. Apple ships a fixed language list, so this is
-    /// their answer, not ours, and the day Arabic joins it this starts returning true on its own.
     @available(iOS 26.0, *)
-    static func canRead(_ text: String) -> Bool {
-        mayRead(userNotes: text, voiceTranscription: nil, alternatives: [])
-    }
-
-    @available(iOS 26.0, *)
-    static func mayRead(userNotes: String?, voiceTranscription: String?, alternatives: [String]) -> Bool {
+    private static func mayRead(userNotes: String?, voiceTranscription: String?, alternatives: [String]) -> Bool {
         guard SystemLanguageModel.default.supportsLocale() else { return false }
 
         let combined = ([userNotes, voiceTranscription].compactMap { $0 } + alternatives).joined(separator: " ")

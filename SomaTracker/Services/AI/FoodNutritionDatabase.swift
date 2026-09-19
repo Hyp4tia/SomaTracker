@@ -40,10 +40,6 @@ struct ParsedNutritionResult {
 final class FoodNutritionDatabase {
     static let shared = FoodNutritionDatabase()
 
-    /// Exposed so the advisor can suggest real dishes with the numbers this app already knows, instead
-    /// of a model inventing a plausible-looking meal.
-    var items: [FoodItemInfo] { foodDatabase }
-
     private let foodDatabase: [FoodItemInfo] = [
         // MARK: - Fast Food / Popular Chains
         FoodItemInfo(

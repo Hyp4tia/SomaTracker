@@ -67,21 +67,6 @@ struct AIFoodItemBreakdown: Codable, Identifiable {
     }
 }
 
-/// A page the answer came from, when the cloud searched the web for it.
-struct SomaWebSource: Identifiable, Hashable {
-    let title: String
-    let url: URL
-
-    var id: String { url.absoluteString }
-}
-
-/// A written answer, with the pages behind it when the web was searched.
-struct SomaAIAnswer {
-    let text: String
-    let sources: [SomaWebSource]
-    let usedSearch: Bool
-}
-
 /// The cloud's verdict on an estimate another engine produced. `agrees` drives the correction;
 /// the numbers ride along either way, so a disagreement can be applied without a second call.
 /// Decoded only, never encoded: the alias keys for the snake_case variants would make a synthesized

@@ -40,12 +40,6 @@ struct AIView: View {
     @State private var showPaywall = false
     @State private var lastQuickActionDate: Date = .distantPast
 
-    /// The conversation surface. Off returns this screen to exactly what it was: the overlay never
-    /// mounts and the launcher bar is replaced by the plain input bar below.
-    @AppStorage(SomaChatSettings.surfaceKey) private var chatSurfaceEnabled = true
-    @State private var isChatExpanded = false
-    @State private var chatSession = SomaChatSession()
-
     var body: some View {
         ZStack(alignment: .top) {
             Color(.systemGroupedBackground)
@@ -60,11 +54,7 @@ struct AIView: View {
 
                         voiceMemosRecorderCard
 
-                        if chatSurfaceEnabled {
-                            SomaChatLauncher(session: chatSession, isExpanded: $isChatExpanded)
-                        } else {
-                            quickTextInputBar
-                        }
+                        quickTextInputBar
                     }
                     .listRowInsets(EdgeInsets(top: 0, leading: 18, bottom: 8, trailing: 18))
                     .listRowSeparator(.hidden)
@@ -155,21 +145,7 @@ struct AIView: View {
             if let message = activeToastMessage {
                 toastBanner(message: message)
                     .transition(.move(edge: .top).combined(with: .opacity))
-                    // Above the conversation surface, not below it: at 100 the toast was drawn behind
-                    // the scrim and the surface whenever the chat was open.
-                    .zIndex(102)
-            }
-
-            // The conversation surface rises over the tab, with a scrim between it and the journal.
-            if chatSurfaceEnabled, isChatExpanded {
-                Color.black.opacity(0.10)
-                    .ignoresSafeArea()
-                    .transition(.opacity)
-                    .zIndex(100.5)
-
-                SomaChatSurface(session: chatSession, isExpanded: $isChatExpanded)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(101)
+                    .zIndex(100)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -219,11 +195,6 @@ struct AIView: View {
         .onChange(of: capturedImage) { _, newImage in
             guard let image = newImage else { return }
             handleCapturedPhoto(image)
-        }
-        .onChange(of: isChatExpanded) { _, expanded in
-            // The bar leaves and returns with the conversation, on the same 0.12s fade the navigation
-            // path uses, rather than waiting for the surface's transition to finish.
-            TabBarCoordinator.setTabBarVisible(!expanded)
         }
         .onReceive(NotificationCenter.default.publisher(for: .somaTriggerQuickAction)) { notif in
             if let action = notif.object as? AIQuickAction {
@@ -534,14 +505,19 @@ struct AIView: View {
 
     private func resolveMealLocation(from analysisLocation: String) async -> String {
         let gpsLocation = await LocationService.shared.fetchCurrentLocation()
-        if let named = SomaLogWriter.realLocation(analysisLocation) {
-            if !gpsLocation.isEmpty && !named.contains(gpsLocation) {
-                return "\(named) · \(gpsLocation)"
+        if !analysisLocation.isEmpty && analysisLocation != "Voice Memo" && analysisLocation != "Quick AI Log" && analysisLocation != "Captured with Camera" {
+            if !gpsLocation.isEmpty && !analysisLocation.contains(gpsLocation) {
+                return "\(analysisLocation) · \(gpsLocation)"
             }
-            return named
+            return analysisLocation
         }
         return !gpsLocation.isEmpty ? gpsLocation : "Soma AI Log"
     }
+
+    /// Placeholder values the AI echoes back when it has no real location to report.
+    private static let locationPlaceholders: Set<String> = [
+        "Voice Memo", "Quick AI Log", "Captured with Camera"
+    ]
 
     /// Shown when the cloud call failed and the on-device engine found nothing either: the user
     /// needs to know Soma AI was unreachable, not that their own log was empty.
@@ -556,7 +532,8 @@ struct AIView: View {
     /// Location stored the moment an entry is created: the AI's own when it reported one,
     /// otherwise a neutral label. `patchLocation` swaps in the geocoded value once it resolves.
     private func provisionalLocation(from analysisLocation: String) -> String {
-        SomaLogWriter.realLocation(analysisLocation) ?? "Soma AI Log"
+        let trimmed = analysisLocation.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || Self.locationPlaceholders.contains(trimmed) ? "Soma AI Log" : trimmed
     }
 
     /// Reverse geocoding is a network round trip, so it runs after the entry is saved and on
@@ -1119,7 +1096,17 @@ struct AIView: View {
     /// Gemini does not need a 12 MP plate. Shrinking to 1024 px keeps the base64 payload
     /// (built on the main actor) roughly ten times smaller.
     private func downscaledJPEGData(from image: UIImage, maxDimension: CGFloat = 1_024, quality: CGFloat = 0.82) -> Data? {
-        SomaImage.jpeg(from: image, maxDimension: maxDimension, quality: quality)
+        let longestSide = max(image.size.width, image.size.height)
+        guard longestSide > maxDimension else {
+            return image.jpegData(compressionQuality: quality)
+        }
+
+        let scale = maxDimension / longestSide
+        let targetSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let resized = UIGraphicsImageRenderer(size: targetSize).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+        return resized.jpegData(compressionQuality: quality)
     }
 
     private func showToast(_ message: String) {
@@ -1303,7 +1290,7 @@ private struct BouncingDotsView: View {
     }
 }
 
-struct ShimmerProgressBar: View {
+private struct ShimmerProgressBar: View {
     @State private var shimmerPhase: CGFloat = -1.0
 
     var body: some View {

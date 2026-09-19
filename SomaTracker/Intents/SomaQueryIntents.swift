@@ -36,7 +36,7 @@ enum NutritionMetric: String, AppEnum {
 /// Today's numbers, read through the same models the app writes. Answers are built here rather than
 /// in each intent so a Siri reply and the History screen can never disagree.
 @MainActor
-struct SomaToday {
+private struct SomaToday {
     private let log: DailyLog?
     private let profile: UserProfile?
 
@@ -103,77 +103,6 @@ struct SomaToday {
         }
     }
 
-    /// "620 kcal left", the pill the chat header shows. Same goal and same log the journal reads, said
-    /// in the user's language.
-    var remainingCaloriesShort: String {
-        let remaining = calorieGoal - (log?.totalCalories ?? 0)
-        let arabic = SpeechLanguage.resolved() == .arabic
-        if remaining < 0 {
-            let over = (-remaining).formatted()
-            return arabic ? "زيادة \(over) سعرة" : "\(over) kcal over"
-        }
-        let left = remaining.formatted()
-        return arabic ? "باقي \(left) سعرة" : "\(left) kcal left"
-    }
-
-    /// Today's meals in order, for the question the store can answer better than any model.
-    var todayMealList: [String] {
-        (log?.foodEntries ?? [])
-            .sorted { $0.timestamp < $1.timestamp }
-            .map { "\($0.name) (\($0.calories) kcal)" }
-    }
-
-    /// "What did I eat today", answered by naming the meals and their running totals.
-    var todayMealsAnswer: String {
-        let meals = todayMealList
-        let arabic = SpeechLanguage.resolved() == .arabic
-
-        guard !meals.isEmpty else {
-            return arabic ? "لسه مفيش حاجة متسجلة النهاردة." : "Nothing logged today yet."
-        }
-
-        let consumed = (log?.totalCalories ?? 0).formatted()
-        let protein = Int((log?.totalProtein ?? 0).rounded())
-        return arabic
-            ? "النهاردة: \(meals.joined(separator: "، ")). المجموع \(consumed) كالوري و\(protein) جرام بروتين."
-            : "Today: \(meals.joined(separator: ", ")). That is \(consumed) kcal and \(protein) g protein."
-    }
-
-    /// One line of today's numbers, for the chat header. Siri gets the full sentence; the chat only has
-    /// room for the two that matter most.
-    var compactSummary: String {
-        let consumed = log?.totalCalories ?? 0
-        let remaining = calorieGoal - consumed
-        let proteinLeft = max(0, proteinGoal - Int((log?.totalProtein ?? 0).rounded()))
-
-        if consumed == 0 {
-            return SpeechLanguage.resolved() == .arabic ? "لسه مفيش حاجة متسجلة النهاردة" : "Nothing logged today yet"
-        }
-
-        if SpeechLanguage.resolved() == .arabic {
-            return remaining >= 0
-                ? "باقي \(remaining.formatted()) كالوري · \(proteinLeft) جرام بروتين"
-                : "عدّيت هدفك بـ \((-remaining).formatted()) كالوري · \(proteinLeft) جرام بروتين باقي"
-        }
-        return remaining >= 0
-            ? "\(remaining.formatted()) kcal left · \(proteinLeft) g protein left"
-            : "\((-remaining).formatted()) kcal over · \(proteinLeft) g protein left"
-    }
-
-    /// The same words the Siri intent answers with, so a spoken answer and a typed one cannot disagree.
-    static func streakAnswer(context: ModelContext) -> String {
-        let logs = (try? context.fetch(FetchDescriptor<DailyLog>())) ?? []
-        let streak = StreakCalculator.calculate(from: logs)
-
-        if streak.currentStreak == 0 {
-            return "No streak yet. Log a meal, some water, or your steps today to start one."
-        }
-        if streak.hasLoggedToday {
-            return "You're on a \(streak.currentStreak) day streak and today is already logged. Your best is \(streak.bestStreak) days."
-        }
-        return "Your streak is \(streak.currentStreak) days. Nothing logged today yet."
-    }
-
     /// The same numbers the spoken answer is built from, so the card and the dialog cannot disagree.
     var daySnippet: SomaDaySnippetView {
         let system = SomaToday.unitSystem
@@ -237,9 +166,17 @@ struct GetStreakStatusIntent: AppIntent {
     @MainActor
     func perform() async throws -> some ProvidesDialog & ReturnsValue<String> & ShowsSnippetView {
         let context = SomaPersistence.shared.mainContext
-        let answer = SomaToday.streakAnswer(context: context)
         let logs = (try? context.fetch(FetchDescriptor<DailyLog>())) ?? []
         let streak = StreakCalculator.calculate(from: logs)
+
+        let answer: String
+        if streak.currentStreak == 0 {
+            answer = "No streak yet. Log a meal, some water, or your steps today to start one."
+        } else if streak.hasLoggedToday {
+            answer = "You're on a \(streak.currentStreak) day streak and today is already logged. Your best is \(streak.bestStreak) days."
+        } else {
+            answer = "Your streak is \(streak.currentStreak) days. Nothing logged today yet."
+        }
 
         return .result(
             value: answer,
