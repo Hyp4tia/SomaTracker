@@ -96,9 +96,7 @@ struct SomaChatSurface: View {
                 .padding(.top, 8)
 
             HStack(spacing: 10) {
-                SomaThinkingIndicator()
-                    .frame(width: 30, height: 30)
-                    .scaleEffect(0.75)
+                SomaThinkingIndicator(size: 30)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Soma")
@@ -205,7 +203,6 @@ struct SomaChatSurface: View {
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 12) {
             SomaThinkingIndicator()
-                .frame(width: 44, height: 44)
 
             Text(SpeechLanguage.resolved() == .arabic ? "اتكلم معايا" : "Talk to me")
                 .font(.system(size: 18, weight: .bold))
@@ -228,7 +225,7 @@ struct SomaChatSurface: View {
     private var thinkingRow: some View {
         HStack(alignment: .bottom, spacing: 8) {
             HStack(spacing: 12) {
-                SomaThinkingIndicator()
+                SomaThinkingIndicator(isAnimating: true)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(session.thinkingLabel)

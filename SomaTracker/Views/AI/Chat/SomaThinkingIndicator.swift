@@ -2,50 +2,49 @@
 //  SomaThinkingIndicator.swift
 //  SomaTracker
 //
-//  The ripple from the reference the owner sent, rebuilt in SwiftUI: rings that expand and fade out of
-//  the Soma mark while an engine is working. One animated value drives every ring, which is what keeps
-//  it smooth and cheap on a phone.
+//  Soma's mark, and the only thing that moves while an engine is working: a soft pulse of the mark
+//  itself. No rings. Outlines around a filled circle read as decoration, and they used to sit on screen
+//  the whole time the chat was open, which is what the owner pointed at.
 //
 
 import SwiftUI
 
 struct SomaThinkingIndicator: View {
-    /// 0 at the start of a ripple cycle, 1 when the outermost ring has faded out.
-    @State private var phase: Double = 0
+    /// True while an engine is working. At rest the mark is completely still, so nothing on this screen
+    /// looks like it is waiting when it is not.
+    var isAnimating = false
+    var size: CGFloat = 44
 
-    private let ringCount = 3
+    @State private var pulse = false
 
     var body: some View {
         ZStack {
-            ForEach(0..<ringCount, id: \.self) { index in
-                let offset = Double(index) / Double(ringCount)
-                let progress = (phase + offset).truncatingRemainder(dividingBy: 1)
-
-                Circle()
-                    .stroke(SomaColors.navy.opacity(0.30), lineWidth: 1.5)
-                    .scaleEffect(0.55 + progress * 0.75)
-                    .opacity(1 - progress)
-            }
-
             Circle()
                 .fill(SomaColors.navy)
-                .frame(width: 22, height: 22)
+                .frame(width: size, height: size)
 
             Image(systemName: "sparkles")
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: size * 0.42, weight: .bold))
                 .foregroundStyle(.white)
         }
-        .frame(width: 44, height: 44)
-        .onAppear {
-            withAnimation(.linear(duration: 1.8).repeatForever(autoreverses: false)) {
-                phase = 1
-            }
+        .scaleEffect(pulse ? 1.06 : 0.94)
+        .opacity(pulse ? 1 : 0.72)
+        .animation(
+            isAnimating ? .easeInOut(duration: 0.85).repeatForever(autoreverses: true) : .default,
+            value: pulse
+        )
+        .onAppear { pulse = isAnimating }
+        .onChange(of: isAnimating) { _, animating in
+            pulse = animating
         }
     }
 }
 
 #Preview {
-    SomaThinkingIndicator()
-        .padding(40)
-        .background(Color(.systemGroupedBackground))
+    HStack(spacing: 24) {
+        SomaThinkingIndicator(size: 30)
+        SomaThinkingIndicator(isAnimating: true)
+    }
+    .padding(40)
+    .background(Color(.systemGroupedBackground))
 }
