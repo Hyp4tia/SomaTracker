@@ -47,6 +47,12 @@ enum AIFactCheckService {
             return
         }
 
+        #if DEBUG
+        // One line per review so a device test can see exactly what the cloud thought.
+        let kept = !isTrustworthy(verdict) || !isMaterial(verdict, against: analysis)
+        print("[FactCheck] on-device \(analysis.calories) kcal vs cloud \(verdict.calories) kcal -> \(kept ? "kept the on-device answer" : "CORRECTING the entry")")
+        #endif
+
         guard isTrustworthy(verdict), isMaterial(verdict, against: analysis) else { return }
 
         apply(verdict, to: foodEntry, and: aiEntry)

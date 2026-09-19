@@ -147,6 +147,8 @@ final class OnDeviceAIService: AIServiceProtocol {
             ? Array(photoDataList.prefix(Self.maxLocalPhotos))
             : photoDataList
 
+        let started = Date()
+
         let prompt = SomaAIPrompts.mealPrompt(
             notes: userNotes,
             voiceTranscription: voiceTranscription,
@@ -165,6 +167,10 @@ final class OnDeviceAIService: AIServiceProtocol {
                 engine: .onDevice
             )
             guard Self.isConsistent(result) else { throw AIEngineError.inconsistentResult }
+
+            #if DEBUG
+            print("[OnDeviceAI] answered in \(String(format: "%.2f", Date().timeIntervalSince(started)))s: \(result.title), \(result.calories) kcal")
+            #endif
             return result
         } catch {
             // A timeout means this device is the bottleneck, so another wait on top of it would only
