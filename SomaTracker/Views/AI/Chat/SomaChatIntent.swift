@@ -18,6 +18,9 @@ enum SomaChatIntent: Equatable {
     case streak
     /// A question about food or the day that needs numbers: answered, not logged.
     case ask
+    /// A question asking for guidance: answered from the user's own day, and from the web when search is
+    /// available.
+    case advice
 }
 
 enum SomaChatIntentClassifier {
@@ -45,6 +48,21 @@ enum SomaChatIntentClassifier {
     /// Arabic glues its suffixes onto a word, so the user's "my streak" arrives as "ستريكي" and the
     /// keyword "ستريك" would miss it. Latin keywords stay exact, because English does not do that and a
     /// prefix rule would start matching words like "ate" inside longer ones.
+    /// Wording that asks for a suggestion rather than a fact.
+    /// "اكل" and "آكل" are deliberately absent: "اكلت كشري" (I ate koshary) is the app's most common log,
+    /// and an Arabic prefix rule would read that as asking for advice. The open-question fallback below
+    /// catches "اكل ايه" instead. "track" is absent for the same reason, and "on track" is matched as a
+    /// phrase.
+    private static let adviceWords: Set<String> = [
+        "should", "suggest", "suggestion", "suggestions", "recommend", "recommendation", "idea", "ideas",
+        "help", "advice", "healthy", "better", "instead", "doing", "progress", "plan",
+        "أنصحني", "انصحني", "اقترح", "اقترحي", "رايك", "رأيك", "اعمل", "أعمل",
+        "افضل", "أفضل", "احسن", "أحسن", "بديل", "صحي", "صحية", "نصيحة", "ساعدني"
+    ]
+
+    /// Ordered phrases, because one of these words alone means something else.
+    private static let advicePhrases: [[String]] = [["on", "track"]]
+
     private static func contains(_ keyword: String, in tokens: Set<String>) -> Bool {
         if tokens.contains(keyword) { return true }
         guard keyword.unicodeScalars.contains(where: { $0.value > 0x7F }) else { return false }
@@ -54,6 +72,15 @@ enum SomaChatIntentClassifier {
     private static func containsAny(_ keywords: Set<String>, in tokens: Set<String>) -> Bool {
         keywords.contains { contains($0, in: tokens) }
     }
+
+    private static func containsPhrase(_ phrase: [String], in tokens: [String]) -> Bool {
+        guard !phrase.isEmpty, tokens.count >= phrase.count else { return false }
+        for start in 0...(tokens.count - phrase.count) {
+            if Array(tokens[start..<(start + phrase.count)]) == phrase { return true }
+        }
+        return false
+    }
+
 
     private static func words(_ text: String) -> [String] {
         text.lowercased()
@@ -67,12 +94,23 @@ enum SomaChatIntentClassifier {
 
         let tokens = words(trimmed)
         let tokenSet = Set(tokens)
-        let isQuestion = trimmed.hasSuffix("?") || containsAny(questionWords, in: tokenSet)
+        // Asking for guidance counts even when it is phrased as an instruction, which "suggest a high
+        // protein dinner" and "أنصحني بحاجة خفيفة" both are. It is worked out before the logging verbs
+        // because "on track" is a question while "track 250 water" is a request to record.
+        let wantsAdvice = containsAny(adviceWords, in: tokenSet)
+            || advicePhrases.contains { containsPhrase($0, in: tokens) }
+
+        // "log a burger" and "track 250 water" are requests to record, whatever else they contain.
+        if !wantsAdvice, containsAny(loggingWords, in: tokenSet) { return .log }
+
+        let isQuestion = trimmed.hasSuffix("?") || wantsAdvice || containsAny(questionWords, in: tokenSet)
 
         guard isQuestion else { return .log }
 
-        // "log a burger" is a request to record, even though it reads like an instruction.
-        if containsAny(loggingWords, in: tokenSet) { return .log }
+        // Advice before a dish lookup: "what should I eat" mentions eating, and is not asking for numbers.
+        if wantsAdvice {
+            return .advice
+        }
 
         if containsAny(["streak", "ستريك", "سلسلة"], in: tokenSet) {
             return .streak
@@ -80,6 +118,11 @@ enum SomaChatIntentClassifier {
 
         if let metric = metric(in: tokenSet), containsAny(dayWords, in: tokenSet) {
             return .status(metric)
+        }
+
+        // A question with no metric and no advice wording is open, so the day's numbers are the answer.
+        if metric(in: tokenSet) == nil {
+            return .advice
         }
 
         return .ask

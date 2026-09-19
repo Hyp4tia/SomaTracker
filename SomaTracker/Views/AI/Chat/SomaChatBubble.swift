@@ -150,6 +150,8 @@ struct SomaChatBubble: View {
                     .foregroundStyle(Color(.secondaryLabel))
             }
 
+            if !message.sources.isEmpty { sourceLinks }
+
             if message.isLogged {
                 Label("Added to your journal", systemImage: "checkmark.circle.fill")
                     .font(.system(size: 11, weight: .semibold))
@@ -180,7 +182,8 @@ struct SomaChatBubble: View {
     }
 
     private var answerCard: some View {
-        Text(message.text)
+        VStack(alignment: .leading, spacing: 9) {
+            Text(message.text)
             .font(.system(size: 15))
             .foregroundStyle(Color(.label))
             .padding(.horizontal, 14)
@@ -191,6 +194,27 @@ struct SomaChatBubble: View {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(SomaColors.navy.opacity(0.07), lineWidth: 1)
             )
+
+            if !message.sources.isEmpty { sourceLinks }
+        }
+    }
+
+    /// Where a searched answer came from. Tappable, and small: it is evidence, not the answer.
+    private var sourceLinks: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(message.sources.prefix(3)) { source in
+                Link(destination: source.url) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "link")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(source.title)
+                            .font(.system(size: 11))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(SomaColors.navy.opacity(0.75))
+                }
+            }
+        }
     }
 
     private var noticeCard: some View {

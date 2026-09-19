@@ -84,7 +84,7 @@ final class GeminiAIService: AIServiceProtocol {
     /// The model cascade: returns the response's JSON payload as data. Shared by the analysis prompt
     /// and the review prompt so both get the same endpoints, headers, timeout and retry behaviour,
     /// and so a change to the routing or the timeout can never apply to only one of them.
-    private func generateJSON(systemInstruction: String, parts: [[String: Any]]) async throws -> Data {
+    private func generateJSON(systemInstruction: String, parts: [[String: Any]], jsonMode: Bool = true) async throws -> Data {
         // Measured against the live proxy: full Flash models burn 500-900 thinking tokens and
         // answer in 5-15s, or return 503 while Google sheds load, while Flash-Lite answers a
         // photo or a text meal in about 1.5s and never thinks at all. Lite is also the only
@@ -97,6 +97,12 @@ final class GeminiAIService: AIServiceProtocol {
             "gemini-flash-lite-latest",
         ]
 
+        // Built separately: a ternary of two dictionary literals defeats type inference here.
+        var generationConfig: [String: Any] = ["temperature": jsonMode ? 0.1 : 0.2]
+        if jsonMode {
+            generationConfig["response_mime_type"] = "application/json"
+        }
+
         let requestBody: [String: Any] = [
             "system_instruction": [
                 "parts": [["text": systemInstruction]]
@@ -104,10 +110,7 @@ final class GeminiAIService: AIServiceProtocol {
             "contents": [
                 ["parts": parts]
             ],
-            "generationConfig": [
-                "response_mime_type": "application/json",
-                "temperature": 0.1
-            ]
+            "generationConfig": generationConfig
         ]
 
         let requestData = try JSONSerialization.data(withJSONObject: requestBody)
@@ -152,11 +155,16 @@ final class GeminiAIService: AIServiceProtocol {
                       let firstCandidate = candidates.first,
                       let content = firstCandidate["content"] as? [String: Any],
                       let responseParts = content["parts"] as? [[String: Any]],
-                      let textPayload = responseParts.first?["text"] as? String,
-                      let payloadData = GeminiAIService.jsonPayload(from: textPayload) else {
+                      let textPayload = responseParts.first?["text"] as? String else {
                     continue
                 }
 
+                // A question gets prose back; a log gets the JSON contract sliced out of the reply.
+                if !jsonMode {
+                    return Data(textPayload.utf8)
+                }
+
+                guard let payloadData = GeminiAIService.jsonPayload(from: textPayload) else { continue }
                 return payloadData
             } catch {
                 print("[GeminiAIService] Failed with model \(modelName): \(error.localizedDescription)")
@@ -205,6 +213,92 @@ final class GeminiAIService: AIServiceProtocol {
     }
 
     // MARK: - Review
+
+    /// Free-text answer for the chat's advice questions. No JSON contract: the reply is the answer.
+    ///
+    /// Grounding with Google Search is a paid-tier feature on the Gemini 3 family, so a project without
+    /// billing answers 429 for it. That is reported as `usedSearch: false` instead of failing the
+    /// question, and the caller stops asking for search until it might work again.
+    func answer(systemInstruction: String, question: String, searchGrounding: Bool = false) async throws -> SomaAIAnswer {
+        if searchGrounding {
+            do {
+                let grounded = try await groundedAnswer(systemInstruction: systemInstruction, question: question)
+                return grounded
+            } catch {
+                #if DEBUG
+                print("[GeminiAIService] Search grounding unavailable: \(error.localizedDescription)")
+                #endif
+            }
+        }
+
+        let parts: [[String: Any]] = [["text": question]]
+        let data = try await generateJSON(systemInstruction: systemInstruction, parts: parts, jsonMode: false)
+        let text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return SomaAIAnswer(text: text, sources: [], usedSearch: false)
+    }
+
+    private func groundedAnswer(systemInstruction: String, question: String) async throws -> SomaAIAnswer {
+        let body: [String: Any] = [
+            "system_instruction": ["parts": [["text": systemInstruction]]],
+            "contents": [["parts": [["text": question]]]],
+            "tools": [["google_search": [:]]],
+            "generationConfig": ["temperature": 0.2]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: body)
+        let model = "gemini-3.5-flash-lite"
+
+        let endpoint = !proxyEndpoint.isEmpty
+            ? "\(proxyEndpoint)?model=\(model)"
+            : "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)"
+        guard let url = URL(string: endpoint) else {
+            throw NSError(domain: "GeminiAIService", code: 400, userInfo: [NSLocalizedDescriptionKey: "Bad endpoint"])
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if !proxyEndpoint.isEmpty && !proxyClientSecret.isEmpty {
+            request.setValue(proxyClientSecret, forHTTPHeaderField: "X-Soma-Client-Key")
+        }
+        request.httpBody = data
+        request.timeoutInterval = 20
+
+        let (responseData, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let body = String(data: responseData, encoding: .utf8) ?? ""
+            throw NSError(
+                domain: "GeminiAIService",
+                code: (response as? HTTPURLResponse)?.statusCode ?? 500,
+                userInfo: [NSLocalizedDescriptionKey: body]
+            )
+        }
+
+        guard let json = try JSONSerialization.jsonObject(with: responseData) as? [String: Any],
+              let candidates = json["candidates"] as? [[String: Any]],
+              let candidate = candidates.first,
+              let content = candidate["content"] as? [String: Any],
+              let parts = content["parts"] as? [[String: Any]],
+              let text = parts.first?["text"] as? String else {
+            throw NSError(domain: "GeminiAIService", code: 500, userInfo: [NSLocalizedDescriptionKey: "Unreadable grounded reply"])
+        }
+
+        var sources: [SomaWebSource] = []
+        if let metadata = candidate["groundingMetadata"] as? [String: Any],
+           let chunks = metadata["groundingChunks"] as? [[String: Any]] {
+            for chunk in chunks {
+                guard let web = chunk["web"] as? [String: Any],
+                      let urlString = web["uri"] as? String,
+                      let url = URL(string: urlString) else { continue }
+                sources.append(SomaWebSource(title: web["title"] as? String ?? url.host ?? urlString, url: url))
+            }
+        }
+
+        return SomaAIAnswer(
+            text: text.trimmingCharacters(in: .whitespacesAndNewlines),
+            sources: sources,
+            usedSearch: true
+        )
+    }
 
     /// Fact-checks an estimate that another engine produced. The cloud is the second opinion for
     /// everything Siri answers, so a wrong on-device estimate gets corrected rather than shipped.

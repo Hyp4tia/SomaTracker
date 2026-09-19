@@ -14,6 +14,7 @@ struct AISettingsDetailView: View {
     @AppStorage(OnDeviceAISettings.modeKey) private var storedModeRaw = ""
     @AppStorage(OnDeviceAISettings.photosOnDeviceKey) private var photosOnDevice = false
     @AppStorage(SomaChatSettings.surfaceKey) private var chatSurface = true
+    @AppStorage(SomaChatAdvisor.searchKey) private var adviceSearch = true
 
     var body: some View {
         List {
@@ -204,6 +205,32 @@ struct AISettingsDetailView: View {
                             Text(chatSurface
                                  ? "The log bar expands into a full-screen chat"
                                  : "Off, the AI tab uses the plain log bar")
+                                .font(.system(size: 13))
+                                .foregroundStyle(Color(.secondaryLabel))
+                        }
+                    }
+                    .padding(.vertical, 3)
+                }
+                Toggle(isOn: $adviceSearch) {
+                    HStack(spacing: 14) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(SomaColors.aqua)
+                                .frame(width: 32, height: 32)
+
+                            Image(systemName: "globe")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Search the web for suggestions")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color(.label))
+
+                            Text(adviceSearch
+                                 ? "Soma looks up what is actually available near you"
+                                 : "Suggestions come from your history and Soma's own database")
                                 .font(.system(size: 13))
                                 .foregroundStyle(Color(.secondaryLabel))
                         }

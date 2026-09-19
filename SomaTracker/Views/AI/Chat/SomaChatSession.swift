@@ -110,6 +110,9 @@ final class SomaChatSession {
         case .ask:
             await answerQuestion(text: text, photos: photos)
 
+        case .advice:
+            await advise(text: text, context: context)
+
         case .log:
             await analyze(text: text, photos: photos, voice: voice, context: context, subscription: subscription)
         }
@@ -138,6 +141,18 @@ final class SomaChatSession {
         }
 
         messages.append(.analysis(analysis, linkedEntryID: nil, isLogged: false))
+    }
+
+    /// Guidance is answered, never written. It carries the pages behind it when the web was searched.
+    private func advise(text: String, context: ModelContext) async {
+        isThinking = true
+        thinkingLabel = SpeechLanguage.resolved() == .arabic ? "بفكر في يومك" : "Thinking about your day"
+        defer { isThinking = false }
+
+        // The digest is read here, on the main actor, because advice is about today's store.
+        let day = SomaDayContext.build(context: context)
+        let answer = await SomaChatAdvisor.answer(question: text, day: day)
+        messages.append(.answer(answer.text, sources: answer.sources))
     }
 
     // MARK: - The log path

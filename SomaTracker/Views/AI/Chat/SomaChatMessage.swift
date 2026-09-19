@@ -50,6 +50,9 @@ struct SomaChatMessage: Identifiable {
     /// Which engine answered, so logging an answered question later still reports the truth.
     var engine: AIMealAnalysisResult.Engine = .onDevice
 
+    /// Pages the answer came from, when the web was searched for it.
+    var sources: [SomaWebSource] = []
+
     static func user(text: String, photos: [Data] = [], voiceRelativePath: String? = nil, voiceDuration: TimeInterval = 0) -> SomaChatMessage {
         SomaChatMessage(
             kind: .user,
@@ -93,8 +96,8 @@ struct SomaChatMessage: Identifiable {
         )
     }
 
-    static func answer(_ text: String) -> SomaChatMessage {
-        SomaChatMessage(kind: .answer, author: .soma, text: text)
+    static func answer(_ text: String, sources: [SomaWebSource] = []) -> SomaChatMessage {
+        SomaChatMessage(kind: .answer, author: .soma, text: text, sources: sources)
     }
 
     static func notice(_ text: String) -> SomaChatMessage {
