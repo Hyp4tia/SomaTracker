@@ -22,9 +22,9 @@ struct AIView: View {
     @State private var showCameraCapture = false
     @State private var capturedImage: UIImage? = nil
 
-    // Smart Text Input
-    @State private var inputText = ""
-    @FocusState private var isInputFocused: Bool
+    // Chat launcher
+    @State private var showChat = false
+    @AppStorage("soma_chat_surface") private var chatEnabled = true
 
     // Navigation & Feedback
     @State private var selectedEntryForDetail: AIMealEntry? = nil
@@ -168,6 +168,9 @@ struct AIView: View {
         }
         .navigationDestination(item: $selectedEntryForDetail) { entry in
             AIMealDetailView(entry: entry)
+        }
+        .navigationDestination(isPresented: $showChat) {
+            SomaChatPage()
         }
         .fullScreenCover(isPresented: $showCameraCapture) {
             CameraCapturePicker(selectedImage: $capturedImage)
@@ -445,49 +448,35 @@ struct AIView: View {
         .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 4)
     }
 
-    // MARK: - 3. Smart Quick-Log Text Input Bar
+    // MARK: - 3. Soma Chat Launcher
 
     private var quickTextInputBar: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(SomaColors.navy)
-                .padding(.leading, 6)
+        Button {
+            showChat = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(SomaColors.navy)
 
-            TextField(
-                "Describe meal or water (e.g. chicken salad)...",
-                text: $inputText
-            )
-            .font(.system(size: 15))
-            .focused($isInputFocused)
-            .submitLabel(.send)
-            .onSubmit {
-                processTextInput()
+                Text(chatEnabled ? "Ask Soma or log food and water" : "Quick logging")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color(.secondaryLabel))
+
+                Spacer()
+
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(SomaColors.navy)
             }
-
-            if !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Button {
-                    processTextInput()
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(SomaColors.navy)
-                            .frame(width: 32, height: 32)
-
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                }
-                .buttonStyle(.borderless)
-                .transition(.scale)
-            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(SomaColors.white)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(SomaColors.white)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
+        .buttonStyle(.plain)
+        .disabled(!chatEnabled)
     }
 
     // MARK: - 4. Actions & Logic
@@ -784,146 +773,6 @@ struct AIView: View {
                         let msg = speechService.lastErrorMessage ?? "Unable to start microphone recording."
                         showToast(msg)
                     }
-                }
-            }
-        }
-    }
-
-    private func processTextInput() {
-        let query = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return }
-        guard !isAnalyzingAI else { return }
-
-        // Hydration is exact from on-device parsing: no cloud round trip, no AI credit.
-        let localWater = FoodNutritionDatabase.shared.parseInput(query)
-        if localWater.isWater {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            inputText = ""
-            isInputFocused = false
-            logLocalHydration(amountML: localWater.waterML, summary: localWater.summary, story: query)
-            return
-        }
-
-        guard subscriptionManager.canUseAIFeatures else {
-            showPaywall = true
-            return
-        }
-
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        inputText = ""
-        isInputFocused = false
-
-        withAnimation(.snappy(duration: 0.25)) {
-            analyzingType = .text
-            isAnalyzingAI = true
-        }
-
-        Task {
-            let analysis = await AIRouter.shared.processMultimodalMeal(
-                notes: query,
-                photos: [],
-                audioURL: nil
-            )
-
-            // Water answered by an engine still belongs in the hydration tracker, not the food log.
-            if analysis.isWaterLog {
-                await MainActor.run {
-                    logLocalHydration(
-                        amountML: analysis.waterML,
-                        summary: analysis.storyNarrative.isEmpty ? analysis.title : analysis.storyNarrative,
-                        story: query
-                    )
-                    withAnimation(.snappy(duration: 0.35)) {
-                        isAnalyzingAI = false
-                    }
-                }
-                return
-            }
-
-            // Guard against non-food text inputs
-            guard !analysis.isNoFood, analysis.title != "No Food Detected" else {
-                await MainActor.run {
-                    withAnimation(.snappy(duration: 0.35)) {
-                        isAnalyzingAI = false
-                    }
-                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                    let emptyResultMessage = analysis.engine == .onDeviceFallback
-                        ? unreachableAIMessage
-                        : localized("لم يتم التعرف على طعام أو شراب في النص.", "No food or drink recognized in text.")
-                    showToast(emptyResultMessage)
-                }
-                return
-            }
-
-            let finalLocation = provisionalLocation(from: analysis.location)
-
-            await MainActor.run {
-                let todayLog = DailyLog.fetchOrCreateToday(context: modelContext)
-                let aiEntryId = UUID()
-
-                // Hydration was already decided from the typed text before the cloud call, so the
-                // result is never re-read for water here.
-                let foodEntry = FoodEntry(
-                    name: analysis.title,
-                    calories: analysis.calories,
-                    proteinG: analysis.proteinG,
-                    carbsG: analysis.carbsG,
-                    fatG: analysis.fatG,
-                    mealType: "AI Log",
-                    timestamp: .now,
-                    aiMealEntryId: aiEntryId
-                )
-                todayLog.foodEntries.append(foodEntry)
-
-                let aiEntry = AIMealEntry(
-                    id: aiEntryId,
-                    title: analysis.title,
-                    location: finalLocation,
-                    storyText: query,
-                    calories: analysis.calories,
-                    proteinG: analysis.proteinG,
-                    carbsG: analysis.carbsG,
-                    fatG: analysis.fatG,
-                    photoDataList: [],
-                    voiceAudioRelativePath: nil,
-                    voiceWaveformSamples: [],
-                    voiceDurationSeconds: 0.0,
-                    breakdownNotes: analysis.storyNarrative
-                )
-                aiEntry.dailyLog = todayLog
-                modelContext.insert(aiEntry)
-
-                // A log can name a drink and a meal in one breath. The water rides along in the
-                // same save, so the meal never costs it.
-                if let water = WaterEntry.loggedWithMeal(analysis.waterML, linkedTo: aiEntryId) {
-                    todayLog.waterEntries.append(water)
-                }
-
-                let saved = persistContext()
-                if saved { subscriptionManager.consumeFreeScanIfFreeUser() }
-                withAnimation(.snappy(duration: 0.35)) {
-                    isAnalyzingAI = false
-                }
-                guard saved else { return }
-                patchLocation(of: aiEntry, from: analysis.location)
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-                if subscriptionManager.isPro {
-                    showToast("Logged \(analysis.title) · \(analysis.calories) kcal")
-                } else if subscriptionManager.remainingFreeScans > 0 {
-                    showToast("Logged \(analysis.title) · \(subscriptionManager.remainingFreeScans) free logs left")
-                } else {
-                    showToast("Logged \(analysis.title) · Free trial completed")
-                }
-
-                // The cloud reviews every on-device answer, after the fact so nothing waits.
-                Task {
-                    await AIFactCheckService.review(
-                        input: query,
-                        analysis: analysis,
-                        foodEntry: foodEntry,
-                        aiEntry: aiEntry,
-                        context: modelContext
-                    )
                 }
             }
         }

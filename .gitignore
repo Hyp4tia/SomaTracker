@@ -43,3 +43,6 @@ Packages/
 *~
 *.ipa
 xcuserdata/
+
+# Local Hermes plans and session artifacts
+.hermes/

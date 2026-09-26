@@ -13,6 +13,8 @@ struct AISettingsDetailView: View {
     /// Empty until the user picks, so an install from before this screen keeps its old behaviour.
     @AppStorage(OnDeviceAISettings.modeKey) private var storedModeRaw = ""
     @AppStorage(OnDeviceAISettings.photosOnDeviceKey) private var photosOnDevice = false
+    @AppStorage("soma_chat_surface") private var chatEnabled = true
+    @AppStorage("soma_advice_web_search") private var webSearchEnabled = true
 
     var body: some View {
         List {
@@ -151,6 +153,17 @@ struct AISettingsDetailView: View {
                 Text("ANALYSIS ENGINE")
             } footer: {
                 Text("On-device first answers instantly on this iPhone and the cloud model checks the numbers after they are logged. Cloud first sends every log to the cloud and nothing runs locally.")
+            }
+
+            Section {
+                Toggle("Conversational Soma", isOn: $chatEnabled)
+
+                Toggle("Search the web for suggestions", isOn: $webSearchEnabled)
+                    .disabled(true)
+            } header: {
+                Text("CONVERSATION")
+            } footer: {
+                Text("Chat can answer nutrition questions and log food or water. Web suggestions are ready for a later release and stay off until live search is enabled.")
             }
 
             // Section 3: Siri & Action Button Shortcuts

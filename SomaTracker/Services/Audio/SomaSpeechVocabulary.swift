@@ -2,8 +2,8 @@
 //  SomaSpeechVocabulary.swift
 //  SomaTracker
 //
-//  Words the recognizer has no reason to know: Egyptian dish names, delivery apps and venues, and
-//  the dialect phrasings dictation reliably mangles.
+//  Words the recognizer has no reason to know: Egyptian dish names, delivery apps and venues,
+//  café drinks, and the dialect phrasings dictation reliably mangles.
 //
 //  Apple caps contextualStrings at 100 phrases total, so every entry here is a slot taken from
 //  something else. Generic words are deliberately absent: "chicken", "rice" and "water" are in the
@@ -27,7 +27,7 @@ enum SomaSpeechVocabulary {
     /// Venues, chains and delivery apps, in both scripts: dictation writes "بريد فاست" as
     /// "breakfast" and English brand names in Arabic letters, so both forms earn a slot.
     private static let venues = [
-        "بريد فاست", "طلبات", "طلباتي", "إلمينوز", "أطلب", "إنستاشوب", "رابيت",
+        "بريد فاست", "طلبات", "إلمينوز", "إنستاشوب", "رابيت",
         "كشري التحرير", "أبو طارق", "سيد حنفي", "زووبا", "كوك دور", "جاد", "الفلفلة",
         "أبو السيد", "صبحي كابر", "أندريا", "الشبراوي", "كنتاكي", "بيتزا هت",
         "هارديز", "سيلانترو", "سبينس", "مترو ماركت",
@@ -40,7 +40,7 @@ enum SomaSpeechVocabulary {
         "شاي بلبن", "شاي بالنعناع", "كوباية مية", "كوبايتين مية", "ازازة مية",
         "نص كيلو", "ربع كيلو", "نص فرخة", "طبق وسط", "ساندوتش كبدة",
         "رغيف حواوشي", "طبق كشري", "عيش بلدي", "فطار", "غدا",
-        "عشا", "سحور", "تحلية", "مشروبات",
+        "عشا", "سحور",
     ]
 
     /// Units and logging verbs, kept from the original list: they carry the quantity in a spoken log.
@@ -48,9 +48,18 @@ enum SomaSpeechVocabulary {
         "جرام", "مل", "لتر", "كيلو", "شربت", "أكلت", "سعرات", "بروتين",
     ]
 
+    /// Café drinks, whose English names dictation rewrites into common words: "iced latte" comes
+    /// back as "hi latte" without the phrase here. Arabic spellings earn a slot too, since the
+    /// hamza is as likely to be dropped as written.
+    private static let drinks = [
+        "iced latte", "ice latte", "cold brew", "flat white", "frappe",
+        "آيس لاتيه", "لاتيه",
+    ]
+
     /// Fed to `SFSpeechRecognitionRequest.contextualStrings`. Apple documents a maximum of 100
-    /// phrases across the whole list.
+    /// phrases across the whole list, and this one sits at exactly 100: adding anything means
+    /// trading an existing entry out.
     static var contextualStrings: [String] {
-        dishes + venues + phrasings + units
+        dishes + venues + phrasings + units + drinks
     }
 }

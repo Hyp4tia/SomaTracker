@@ -197,12 +197,17 @@ final class FoodNutritionDatabase {
             aliases: ["pizza", "pepperoni pizza", "slice of pizza", "2 slices pizza"]
         ),
         FoodItemInfo(
-            name: "Iced Latte (Whole Milk)",
+            name: "Latte (Whole Milk)",
             calories: 150,
             proteinG: 8.0,
             carbsG: 14.0,
             fatG: 7.0,
-            aliases: ["latte", "iced latte", "cappuccino", "coffee"]
+            // Both Arabic spellings: this matcher is a plain substring test with no Arabic folding,
+            // so a user who writes "ايس لاتيه" would miss an alias stored as "آيس لاتيه".
+            aliases: [
+                "latte", "iced latte", "cappuccino", "coffee",
+                "لاتيه", "آيس لاتيه", "ايس لاتيه", "قهوة باللبن",
+            ]
         ),
 
         // MARK: - Egyptian & Middle Eastern Staples
@@ -382,6 +387,23 @@ final class FoodNutritionDatabase {
             carbsG: 26.0,
             fatG: 0.5,
             aliases: ["orange juice", "fresh orange juice", "عصير برتقال", "عصير لمون", "lemonade"]
+        ),
+        FoodItemInfo(
+            name: "شاي بلبن (Tea with Milk)",
+            calories: 90,
+            proteinG: 3.0,
+            carbsG: 12.0,
+            fatG: 3.0,
+            aliases: ["شاي بلبن", "شاي باللبن", "شاي بحليب"]
+        ),
+        FoodItemInfo(
+            name: "عصير مانجو (Mango Juice)",
+            calories: 150,
+            proteinG: 1.0,
+            carbsG: 36.0,
+            fatG: 0.5,
+            // Juice only: plain "مانجو" is the fruit, not a glass of juice.
+            aliases: ["عصير مانجو", "عصير مانجا", "مانجو عصير", "mango juice"]
         )
     ]
 
@@ -597,7 +619,7 @@ final class FoodNutritionDatabase {
     }
 
     /// The most specific database entry mentioned in the text, if any. The longest alias wins so
-    /// "black coffee" beats "coffee" on the iced latte row.
+    /// "black coffee" beats "coffee" on the latte row.
     private func databaseMatch(in lower: String) -> FoodItemInfo? {
         foodDatabase
             .flatMap { item in

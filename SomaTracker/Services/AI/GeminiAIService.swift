@@ -84,7 +84,11 @@ final class GeminiAIService: AIServiceProtocol {
     /// The model cascade: returns the response's JSON payload as data. Shared by the analysis prompt
     /// and the review prompt so both get the same endpoints, headers, timeout and retry behaviour,
     /// and so a change to the routing or the timeout can never apply to only one of them.
-    private func generateJSON(systemInstruction: String, parts: [[String: Any]]) async throws -> Data {
+    private func generateJSON(
+        systemInstruction: String,
+        parts: [[String: Any]],
+        jsonMode: Bool = true
+    ) async throws -> Data {
         // Measured against the live proxy: full Flash models burn 500-900 thinking tokens and
         // answer in 5-15s, or return 503 while Google sheds load, while Flash-Lite answers a
         // photo or a text meal in about 1.5s and never thinks at all. Lite is also the only
@@ -97,6 +101,11 @@ final class GeminiAIService: AIServiceProtocol {
             "gemini-flash-lite-latest",
         ]
 
+        var generationConfig: [String: Any] = ["temperature": jsonMode ? 0.1 : 0.2]
+        if jsonMode {
+            generationConfig["response_mime_type"] = "application/json"
+        }
+
         let requestBody: [String: Any] = [
             "system_instruction": [
                 "parts": [["text": systemInstruction]]
@@ -104,10 +113,7 @@ final class GeminiAIService: AIServiceProtocol {
             "contents": [
                 ["parts": parts]
             ],
-            "generationConfig": [
-                "response_mime_type": "application/json",
-                "temperature": 0.1
-            ]
+            "generationConfig": generationConfig
         ]
 
         let requestData = try JSONSerialization.data(withJSONObject: requestBody)
@@ -152,11 +158,15 @@ final class GeminiAIService: AIServiceProtocol {
                       let firstCandidate = candidates.first,
                       let content = firstCandidate["content"] as? [String: Any],
                       let responseParts = content["parts"] as? [[String: Any]],
-                      let textPayload = responseParts.first?["text"] as? String,
-                      let payloadData = GeminiAIService.jsonPayload(from: textPayload) else {
+                      let textPayload = responseParts.first?["text"] as? String else {
                     continue
                 }
 
+                if !jsonMode {
+                    return Data(textPayload.utf8)
+                }
+
+                guard let payloadData = GeminiAIService.jsonPayload(from: textPayload) else { continue }
                 return payloadData
             } catch {
                 print("[GeminiAIService] Failed with model \(modelName): \(error.localizedDescription)")
@@ -202,6 +212,30 @@ final class GeminiAIService: AIServiceProtocol {
         }
 
         return cleaned.data(using: .utf8)
+    }
+
+    // MARK: - Chat
+
+    func answer(question: String, context: String) async throws -> String {
+        guard !proxyEndpoint.isEmpty || !apiKey.isEmpty else {
+            throw NSError(domain: "GeminiAIService", code: 401, userInfo: [NSLocalizedDescriptionKey: "Neither Gemini proxy endpoint nor API key is configured."])
+        }
+
+        let language = SpeechLanguage.resolved() == .arabic ? "Arabic" : "English"
+        let instruction = """
+        You are Soma, a concise nutrition assistant inside a personal tracker.
+        Answer in \(language). Use only the user context and established nutrition knowledge.
+        Give practical guidance, never diagnose or claim medical certainty.
+        Keep the answer under four short sentences. If information is missing, say what is missing.
+        """
+        let prompt = "\(context)\n\nUser: \(question)"
+        let data = try await generateJSON(
+            systemInstruction: instruction,
+            parts: [["text": prompt]],
+            jsonMode: false
+        )
+        return String(decoding: data, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Review
